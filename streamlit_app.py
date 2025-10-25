@@ -1,7 +1,9 @@
-# Minimal ESG Dashboard — v0.4: One Graph + Team (local folder images, circular)
+# Minimal ESG Dashboard — v0.5: One Graph + Team (local folder images via base64, circular)
 # Title: “Carbon Finance Term Project | Group-7”
 
 import os
+import base64
+import mimetypes
 from pathlib import Path
 import pandas as pd
 import streamlit as st
@@ -12,7 +14,7 @@ st.set_page_config(page_title="Carbon Finance Term Project | Group-7", layout="w
 
 # Title
 st.title("Carbon Finance Term Project | Group-7")
-st.caption("ESG Disclosures & Carbon Finance — Minimal Dashboard (v0.4)")
+st.caption("ESG Disclosures & Carbon Finance — Minimal Dashboard (v0.5)")
 
 # Sidebar uploader
 st.sidebar.header("Upload (optional)")
@@ -64,34 +66,33 @@ st.dataframe(df, width='stretch', hide_index=True)
 st.divider()
 
 # -----------------------------
-# Team section (circular photos from folder)
+# Team section (circular photos from folder via base64)
 # -----------------------------
 st.subheader("Project Team — Group 7")
 
 # Folder containing team photos (place this folder next to your app file)
 BASE_DIR = Path(__file__).parent
-TEAM_DIR = BASE_DIR / "team_photos"   # e.g., ./team_photos/siddharth.jpg
+TEAM_DIR = BASE_DIR / "team_photos"   # e.g., ./team_photos/p24siddharth.JPG
 
 # Define members with corresponding filenames in TEAM_DIR
 team = [
-    {"name": "Akshat Negi", "file": "p24akshatnegi.JPG"},
-    {"name": "G R Srikanth",  "file": "p24srikanth.JPG"},
-    {"name": "Siddharth Kumar Pandey", "file": "p24siddharth.JPG"},
-    {"name": "Vineet Ranjan Maitrey",    "file": "p24vineet.jpg"}
+    {"name": "Akshat Negi",             "file": "p24akshatnegi.JPG"},
+    {"name": "G R Srikanth",            "file": "p24srikanth.JPG"},
+    {"name": "Siddharth Kumar Pandey",  "file": "p24siddharth.JPG"},
+    {"name": "Vineet Ranjan Maitrey",   "file": "p24vineet.jpg"},
     # Add or remove members as needed:
-    # {"name": "Member 4", "file": "member4.png"},
     # {"name": "Member 5", "file": "member5.jpeg"},
 ]
 
 # Create folder hint (doesn't create files; just helps users)
 if not TEAM_DIR.exists():
     TEAM_DIR.mkdir(parents=True, exist_ok=True)
-    st.info(f"Created {TEAM_DIR.as_posix()}. Add your image files there (e.g., siddharth.jpg).")
+    st.info(f"Created {TEAM_DIR.as_posix()}. Add your image files there (e.g., p24siddharth.JPG).")
 
 cols_per_row = 5
 size_px = 120
 
-# CSS for circular images
+# CSS for circular images / placeholders
 st.markdown(
     f"""
     <style>
@@ -103,7 +104,7 @@ st.markdown(
         text-align: center;
         padding: 8px 4px;
     }}
-    .team-img {{
+    .team-img, .team-missing {{
         width: {size_px}px;
         height: {size_px}px;
         border-radius: 50%;
@@ -111,36 +112,54 @@ st.markdown(
         border: 2px solid #e5e7eb;
         box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     }}
-    .team-name {{
-        margin-top: 8px;
-        font-weight: 600;
-        font-size: 0.95rem;
-    }}
     .team-missing {{
-        width: {size_px}px;
-        height: {size_px}px;
-        border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
         background: #f3f4f6;
         color: #6b7280;
+        font-weight: 700;
+        font-size: 1.2rem;
+    }}
+    .team-name {{
+        margin-top: 8px;
         font-weight: 600;
-        border: 2px dashed #e5e7eb;
+        font-size: 0.95rem;
     }}
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-def img_tag_or_placeholder(file_path: Path, alt_text: str) -> str:
-    """Return an <img> tag if file exists, else a circular placeholder."""
-    if file_path.exists():
-        # Use POSIX-style path for HTML src
-        return f'<img class="team-img" src="{file_path.as_posix()}" alt="{alt_text}"/>'
-    # Placeholder circle with initials if file missing
-    initials = "".join([p[0] for p in alt_text.split() if p]).upper()[:2]
-    return f'<div class="team-missing">{initials}</div>'
+def get_initials(name: str) -> str:
+    """Return 1–2 uppercase initials for placeholder."""
+    parts = name.strip().split()
+    if not parts:
+        return "?"
+    if len(parts) == 1:
+        return parts[0][0].upper()
+    return (parts[0][0] + parts[-1][0]).upper()
+
+def to_data_uri(path: Path):
+    """
+    Read file bytes and return a data: URI (base64).
+    Returns None if file missing or unreadable.
+    """
+    try:
+        mime, _ = mimetypes.guess_type(path.name)
+        if mime is None:
+            mime = "image/jpeg"
+        with open(path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("ascii")
+        return f"data:{mime};base64,{b64}"
+    except Exception:
+        return None
+
+def img_or_placeholder(path: Path, name: str) -> str:
+    data_uri = to_data_uri(path)
+    if data_uri:
+        return f'<img class="team-img" src="{data_uri}" alt="{name}"/>'
+    return f'<div class="team-missing">{get_initials(name)}</div>'
 
 def render_team(members, cols_per_row=5):
     if not members:
@@ -155,12 +174,12 @@ def render_team(members, cols_per_row=5):
                 c.empty()
                 continue
             m = members[idx]
-            photo_path = (TEAM_DIR / m["file"]).resolve()
+            photo_path = (TEAM_DIR / m["file"])
             with c:
                 st.markdown(
                     f"""
                     <div class="team-wrap">
-                        {img_tag_or_placeholder(photo_path, m["name"])}
+                        {img_or_placeholder(photo_path, m["name"])}
                         <div class="team-name">{m['name']}</div>
                     </div>
                     """,
