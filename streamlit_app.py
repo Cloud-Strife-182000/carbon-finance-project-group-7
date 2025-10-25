@@ -74,9 +74,9 @@ TEAM_DIR = BASE_DIR / "team_photos"   # e.g., ./team_photos/siddharth.jpg
 
 # Define members with corresponding filenames in TEAM_DIR
 team = [
-    {"name": "Akshat Negi", "file": "p24akshatnegi.jpg"},
+    {"name": "Akshat Negi", "file": "p24akshatnegi.JPG"},
     {"name": "G R Srikanth",  "file": "p24srikanth.JPG"},
-    {"name": "Siddharth Kumar Pandey", "file": "p24siddharth.jpg"},
+    {"name": "Siddharth Kumar Pandey", "file": "p24siddharth.JPG"},
     {"name": "Vineet Ranjan Maitrey",    "file": "p24vineet.jpg"}
     # Add or remove members as needed:
     # {"name": "Member 4", "file": "member4.png"},
