@@ -1,7 +1,8 @@
-# Minimal ESG Dashboard — v0.5: One Graph + Team (local folder images via base64, circular)
+# Minimal ESG Dashboard — v0.6: One Graph + Team (cropped & downsized local photos via base64)
 # Title: “Carbon Finance Term Project | Group-7”
 
 import os
+import io
 import base64
 import mimetypes
 from pathlib import Path
@@ -9,12 +10,14 @@ import pandas as pd
 import streamlit as st
 import altair as alt
 
+from PIL import Image, ImageOps  # NEW: for cropping/downsizing
+
 # Page setup
 st.set_page_config(page_title="Carbon Finance Term Project | Group-7", layout="wide")
 
 # Title
 st.title("Carbon Finance Term Project | Group-7")
-st.caption("ESG Disclosures & Carbon Finance — Minimal Dashboard (v0.5)")
+st.caption("ESG Disclosures & Carbon Finance — Minimal Dashboard (v0.6)")
 
 # Sidebar uploader
 st.sidebar.header("Upload (optional)")
@@ -66,33 +69,29 @@ st.dataframe(df, width='stretch', hide_index=True)
 st.divider()
 
 # -----------------------------
-# Team section (circular photos from folder via base64)
+# Team section (cropped & resized circular photos via base64)
 # -----------------------------
 st.subheader("Project Team — Group 7")
 
-# Folder containing team photos (place this folder next to your app file)
 BASE_DIR = Path(__file__).parent
-TEAM_DIR = BASE_DIR / "team_photos"   # e.g., ./team_photos/p24siddharth.JPG
+TEAM_DIR = BASE_DIR / "team_photos"
 
-# Define members with corresponding filenames in TEAM_DIR
 team = [
     {"name": "Akshat Negi",             "file": "p24akshatnegi.JPG"},
     {"name": "G R Srikanth",            "file": "p24srikanth.JPG"},
     {"name": "Siddharth Kumar Pandey",  "file": "p24siddharth.JPG"},
     {"name": "Vineet Ranjan Maitrey",   "file": "p24vineet.jpg"},
-    # Add or remove members as needed:
-    # {"name": "Member 5", "file": "member5.jpeg"},
 ]
 
-# Create folder hint (doesn't create files; just helps users)
 if not TEAM_DIR.exists():
     TEAM_DIR.mkdir(parents=True, exist_ok=True)
     st.info(f"Created {TEAM_DIR.as_posix()}. Add your image files there (e.g., p24siddharth.JPG).")
 
-cols_per_row = 5
-size_px = 120
+# Visual diameter of the circular avatar (px)
+size_px = 110          # adjust smaller/larger as you prefer (e.g., 96, 120, 140)
+encode_px = size_px*2  # encode at 2x for crispness on HiDPI; CSS will display at size_px
 
-# CSS for circular images / placeholders
+# CSS
 st.markdown(
     f"""
     <style>
@@ -119,12 +118,13 @@ st.markdown(
         background: #f3f4f6;
         color: #6b7280;
         font-weight: 700;
-        font-size: 1.2rem;
+        font-size: 1.1rem;
     }}
     .team-name {{
         margin-top: 8px;
         font-weight: 600;
         font-size: 0.95rem;
+        text-align: center;
     }}
     </style>
     """,
@@ -132,7 +132,6 @@ st.markdown(
 )
 
 def get_initials(name: str) -> str:
-    """Return 1–2 uppercase initials for placeholder."""
     parts = name.strip().split()
     if not parts:
         return "?"
@@ -140,31 +139,44 @@ def get_initials(name: str) -> str:
         return parts[0][0].upper()
     return (parts[0][0] + parts[-1][0]).upper()
 
-def to_data_uri(path: Path):
+def to_data_uri_cropped(path: Path, target_px: int) -> str | None:
     """
-    Read file bytes and return a data: URI (base64).
-    Returns None if file missing or unreadable.
+    Open image, auto-rotate from EXIF, center-crop to square,
+    resize to target_px, and return base64 data URI (JPEG).
     """
     try:
-        mime, _ = mimetypes.guess_type(path.name)
-        if mime is None:
-            mime = "image/jpeg"
-        with open(path, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode("ascii")
-        return f"data:{mime};base64,{b64}"
+        img = Image.open(path)
+        img = ImageOps.exif_transpose(img)  # respect EXIF rotation
+
+        # Convert to RGB to avoid issues saving as JPEG from RGBA/CMYK
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+
+        # Center-crop to square
+        w, h = img.size
+        side = min(w, h)
+        left = (w - side) // 2
+        top = (h - side) // 2
+        img = img.crop((left, top, left + side, top + side))
+
+        # Resize to target (2x for crispness if you want; we pass encode_px)
+        img = img.resize((target_px, target_px), Image.Resampling.LANCZOS)
+
+        # Encode to JPEG with reasonable quality
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85, optimize=True, progressive=True)
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        return f"data:image/jpeg;base64,{b64}"
     except Exception:
         return None
 
 def img_or_placeholder(path: Path, name: str) -> str:
-    data_uri = to_data_uri(path)
+    data_uri = to_data_uri_cropped(path, encode_px)
     if data_uri:
         return f'<img class="team-img" src="{data_uri}" alt="{name}"/>'
     return f'<div class="team-missing">{get_initials(name)}</div>'
 
-def render_team(members, cols_per_row=5):
-    if not members:
-        st.info("Add your team members to the `team` list to display them here.")
-        return
+def render_team(members, cols_per_row=4):
     rows = (len(members) + cols_per_row - 1) // cols_per_row
     idx = 0
     for _ in range(rows):
@@ -174,7 +186,7 @@ def render_team(members, cols_per_row=5):
                 c.empty()
                 continue
             m = members[idx]
-            photo_path = (TEAM_DIR / m["file"])
+            photo_path = TEAM_DIR / m["file"]
             with c:
                 st.markdown(
                     f"""
@@ -187,4 +199,4 @@ def render_team(members, cols_per_row=5):
                 )
             idx += 1
 
-render_team(team, cols_per_row=cols_per_row)
+render_team(team, cols_per_row=4)  # 4 columns makes each avatar a bit larger
