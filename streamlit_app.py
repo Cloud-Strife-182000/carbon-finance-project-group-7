@@ -257,9 +257,9 @@ with right:
     layered_pie = (pie + labels_inside + labels_outside).configure_view(strokeWidth=0)
     st.altair_chart(layered_pie, use_container_width=True)
 
-    st.divider()
-    with st.expander("Preview Filtered Data (first 100 rows)"):
-        st.dataframe(df_f.head(100), use_container_width=True, hide_index=True)
+st.divider()
+with st.expander("Preview Filtered Data (first 100 rows)"):
+    st.dataframe(df_f.head(100), use_container_width=True, hide_index=True)
 
 with tab_team:
     # ---------------------------------------------------------
