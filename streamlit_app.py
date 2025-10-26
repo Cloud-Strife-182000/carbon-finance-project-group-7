@@ -125,13 +125,16 @@ n_companies = len(df_f)
 avg_score = float(df_f[score_col].mean())
 med_score = float(df_f[score_col].median())
 
+# Derive dynamic metric labels (e.g., "ESG Score" → "ESG")
+metric_label = score_col.replace(" Score", "")
+
 k1, k2, k3 = st.columns(3)
 with k1:
     st.metric("Companies Analyzed", f"{n_companies:,} / {n_total:,}")
 with k2:
-    st.metric("Average Score", f"{avg_score:.1f}")
+    st.metric(f"Average {metric_label} Score", f"{avg_score:.1f}")
 with k3:
-    st.metric("Median Score", f"{med_score:.1f}")
+    st.metric(f"Median {metric_label} Score", f"{med_score:.1f}")
 
 # ---------------------------------------------------------
 # Additional Info: Year and Sectors Summary
