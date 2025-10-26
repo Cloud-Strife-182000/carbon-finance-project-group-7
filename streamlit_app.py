@@ -1,5 +1,5 @@
-# Carbon Finance Dashboard v1.3.1
-# Fixed Score Columns (ESG/Environment/Social/Governance) + Filters + KPIs + Charts + Team (WebP)
+# Carbon Finance Dashboard v1.3.2
+# Year Filter + Fixed Score Columns + Sector + Min Score + KPIs + Charts + Team (WebP)
 # Title: “Carbon Finance Term Project | Group-7”
 
 import io
@@ -15,7 +15,7 @@ from PIL import Image, ImageOps, ImageDraw
 # ---------------------------------------------------------
 st.set_page_config(page_title="Carbon Finance Term Project | Group-7", layout="wide")
 st.title("Carbon Finance Term Project | Group-7")
-st.caption("ESG Disclosures & Carbon Finance — Score & Rating Distributions (v1.3.1, WebP)")
+st.caption("ESG Disclosures & Carbon Finance — Score & Rating Distributions (v1.3.2, WebP)")
 
 BASE_DIR = Path(__file__).parent
 DATA_PATH = BASE_DIR / "data" / "esg_risk_data.csv"
@@ -30,69 +30,78 @@ else:
     st.stop()
 
 # ---------------------------------------------------------
-# FIXED SCORE COLUMNS (only these four)
+# PARSE YEAR FROM 'Last Updated On'
+# ---------------------------------------------------------
+if "Last Updated On" not in df.columns:
+    st.error("Column 'Last Updated On' not found in dataset.")
+    st.stop()
+
+# Convert to datetime safely
+df["Last Updated On"] = pd.to_datetime(df["Last Updated On"], errors="coerce")
+df["Year"] = df["Last Updated On"].dt.year
+
+available_years = sorted(df["Year"].dropna().unique(), reverse=True)
+valid_years = [y for y in available_years if y in [2024, 2025]]
+
+if not valid_years:
+    valid_years = available_years[-2:] if len(available_years) > 0 else []
+
+# ---------------------------------------------------------
+# FIXED SCORE COLUMNS
 # ---------------------------------------------------------
 FIXED_SCORE_COLS = ["ESG Score", "Environment Score", "Social Score", "Governance Score"]
 available_scores = [c for c in FIXED_SCORE_COLS if c in df.columns]
 
 if not available_scores:
-    st.error("None of the fixed score columns were found: "
-             "'ESG Score', 'Environment Score', 'Social Score', 'Governance Score'.")
+    st.error("None of the fixed score columns were found: 'ESG Score', 'Environment Score', 'Social Score', 'Governance Score'.")
     st.stop()
 
+# ---------------------------------------------------------
+# FILTERS SECTION
+# ---------------------------------------------------------
+st.sidebar.header("Filters")
+
+# Year filter (only 2025, 2024)
+year_choice = st.sidebar.selectbox("Select Year", valid_years, index=0 if 2025 in valid_years else 0)
+df = df[df["Year"] == year_choice]
+
+# Sector filter
+SECTOR_COL = "Sector Classification"
+if SECTOR_COL in df.columns:
+    sector_values = sorted(df[SECTOR_COL].astype("string").fillna("Unknown").unique().tolist())
+    chosen_sectors = st.sidebar.multiselect(
+        "Sectors",
+        options=sector_values,
+        default=sector_values,
+        help=f"Filtering by '{SECTOR_COL}' column",
+    )
+else:
+    st.warning(f"Column '{SECTOR_COL}' not found. Sector filter disabled.")
+    chosen_sectors = None
+
+# Score metric
 st.subheader("Choose Score Metric")
 score_col = st.selectbox("Score column to analyze", available_scores)
 
-# numeric enforcement
+# Numeric enforcement
 df = df.copy()
 df[score_col] = pd.to_numeric(df[score_col], errors="coerce")
 df = df.dropna(subset=[score_col])
 
-# ---------------------------------------------------------
-# SECTOR FILTER: explicit 'Sector Classification'
-# ---------------------------------------------------------
-SECTOR_COL = "Sector Classification"
-if SECTOR_COL not in df.columns:
-    st.warning(f"Column '{SECTOR_COL}' not found. Sector filter will be hidden.")
-    sector_col = None
-else:
-    sector_col = SECTOR_COL
-
-# ---------------------------------------------------------
-# SIDEBAR FILTERS
-# ---------------------------------------------------------
-st.sidebar.header("Filters")
-
-# Sectors multiselect
-if sector_col:
-    sector_values = sorted(
-        df[sector_col].astype("string").fillna("Unknown").unique().tolist(),
-        key=lambda x: (x is None, str(x))
-    )
-    chosen_sectors = st.sidebar.multiselect(
-        "Sectors", options=sector_values, default=sector_values,
-        help=f"Filtering by '{sector_col}' column",
-    )
-else:
-    chosen_sectors = None
-
-# Minimum score slider (based on selected score_col)
+# Minimum score filter
 score_min = float(df[score_col].min())
 score_max = float(df[score_col].max())
 lo = math.floor(score_min / 5.0) * 5
 hi = math.ceil(score_max / 5.0) * 5
-min_score = st.sidebar.slider(
-    "Minimum Score", min_value=float(lo), max_value=float(hi),
-    value=float(lo), step=1.0,
-)
+min_score = st.sidebar.slider("Minimum Score", min_value=float(lo), max_value=float(hi), value=float(lo), step=1.0)
 
 # ---------------------------------------------------------
 # APPLY FILTERS
 # ---------------------------------------------------------
 df_f = df.copy()
-if sector_col and chosen_sectors is not None:
-    df_f[sector_col] = df_f[sector_col].astype("string").fillna("Unknown")
-    df_f = df_f[df_f[sector_col].isin(chosen_sectors)]
+if chosen_sectors:
+    df_f[SECTOR_COL] = df_f[SECTOR_COL].astype("string").fillna("Unknown")
+    df_f = df_f[df_f[SECTOR_COL].isin(chosen_sectors)]
 df_f = df_f[df_f[score_col] >= min_score]
 
 if len(df_f) == 0:
@@ -100,8 +109,7 @@ if len(df_f) == 0:
     st.stop()
 
 # ---------------------------------------------------------
-# RATING BANDS (from selected score)
-# AAA (>=85), AA (75–84), A (65–74), BBB (55–64), BB (<55)
+# RATING BANDS
 # ---------------------------------------------------------
 def map_rating(score):
     if pd.isna(score):
@@ -133,6 +141,8 @@ with k2:
     st.metric("Average Score", f"{avg_score:.1f}")
 with k3:
     st.metric("Median Score", f"{med_score:.1f}")
+
+st.markdown(f"**Year Selected:** {year_choice}")
 
 st.divider()
 
@@ -169,10 +179,7 @@ with right:
         .reset_index(name="n")
     )
     order = ["AAA", "AA", "A", "BBB", "BB", "Unknown"]
-    present_order = [r for r in order if r in rating_counts["rating"].unique()]
-    rating_counts["rating"] = pd.Categorical(
-        rating_counts["rating"], categories=present_order, ordered=True
-    )
+    rating_counts["rating"] = pd.Categorical(rating_counts["rating"], categories=order, ordered=True)
     rating_counts = rating_counts.sort_values("rating")
 
     pie = (
@@ -180,11 +187,8 @@ with right:
         .mark_arc()
         .encode(
             theta=alt.Theta("n:Q", title=""),
-            color=alt.Color("rating:N", title="Rating", sort=present_order),
-            tooltip=[
-                alt.Tooltip("rating:N", title="Rating"),
-                alt.Tooltip("n:Q", title="Count"),
-            ],
+            color=alt.Color("rating:N", title="Rating", sort=order),
+            tooltip=[alt.Tooltip("rating:N"), alt.Tooltip("n:Q", title="Count")],
         )
         .properties(height=380)
     )
