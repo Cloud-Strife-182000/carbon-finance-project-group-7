@@ -83,7 +83,7 @@ if SECTOR_COL in df.columns:
     sector_values = sorted(df[SECTOR_COL].astype("string").fillna("Unknown").unique().tolist())
     chosen_sectors = st.sidebar.multiselect(
         "Sectors", options=sector_values, default=[],
-        help=f"Filtering by '{SECTOR_COL}' column",
+        help=None,
     )
     # If nothing selected, include all sectors
     if not chosen_sectors:
@@ -274,7 +274,7 @@ with tab_overview:
                 ],
             )
         )
-
+        
         final_chart = alt.LayerChart(
             layer=[pie, labels_inside, labels_outside],
             config={
