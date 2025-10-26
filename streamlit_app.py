@@ -251,6 +251,11 @@ with tab_overview:
                 order=alt.Order("sort_key:Q", sort="ascending"),
                 text="label:N",
                 radius=alt.value(112),
+                tooltip=[
+                    alt.Tooltip("rating:N", title="Rating"),
+                    alt.Tooltip("n:Q", title="Count"),
+                    alt.Tooltip("pct:Q", title="Share (%)"),
+                ],
             )
         )
 
@@ -262,6 +267,11 @@ with tab_overview:
                 order=alt.Order("sort_key:Q", sort="ascending"),
                 text="label:N",
                 radius=alt.value(175),
+                tooltip=[
+                    alt.Tooltip("rating:N", title="Rating"),
+                    alt.Tooltip("n:Q", title="Count"),
+                    alt.Tooltip("pct:Q", title="Share (%)"),
+                ],
             )
         )
 
