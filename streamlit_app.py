@@ -179,7 +179,6 @@ with left:
 with right:
     st.subheader("Rating Distribution (Derived from Selected Score)")
 
-    # Aggregate counts
     rating_counts = (
         df_f["ESG_Rating_Band"]
         .astype("string")
@@ -189,24 +188,22 @@ with right:
         .reset_index(name="n")
     )
 
-    # Explicit order and numeric sort key (this is the key to alignment)
+    # Fixed order + numeric sort key to keep labels aligned with wedges
     desired_order = ["AAA", "AA", "A", "BBB", "BB", "Unknown"]
     order_index = {lab: i for i, lab in enumerate(desired_order)}
     rating_counts["sort_key"] = rating_counts["rating"].map(order_index).fillna(999).astype(int)
-
-    # Sort once and keep as-is for both layers
     rating_counts = rating_counts.sort_values("sort_key").reset_index(drop=True)
 
-    # Percent + label text
+    # % and display label
     total_n = rating_counts["n"].sum()
     rating_counts["pct"] = (rating_counts["n"] / total_n * 100).round(1)
     rating_counts["label"] = rating_counts["pct"].astype(int).astype(str) + "%"
 
-    # Green palette (dark → light). We’ll slice to the number of categories present.
+    # Theme
     green_palette = ['#00441b', '#006d2c', '#238b45', '#41ae76', '#66c2a4', '#99d8c9']
     palette = green_palette[: len(rating_counts)]
 
-    # Donut wedges — use identical theta + order in BOTH layers
+    # Donut wedges
     pie = (
         alt.Chart(rating_counts)
         .mark_arc(outerRadius=150, innerRadius=60, cornerRadius=5)
@@ -217,7 +214,7 @@ with right:
                 "rating:N",
                 title="Rating",
                 scale=alt.Scale(domain=rating_counts["rating"].tolist(), range=palette),
-                sort=None,  # domain already fixes the order
+                sort=None,
             ),
             tooltip=[
                 alt.Tooltip("rating:N", title="Rating"),
@@ -227,19 +224,36 @@ with right:
         )
     )
 
-    # Labels — identical theta + order so text sits on the correct slice
-    labels = (
-        alt.Chart(rating_counts)
+    # --- Label logic: big slices inside, small slices outside ---
+    MIN_LABEL_PCT = 2  # <— tweak threshold (%)
+
+    inside = rating_counts[rating_counts["pct"] >= MIN_LABEL_PCT]
+    outside = rating_counts[rating_counts["pct"] < MIN_LABEL_PCT]
+
+    labels_inside = (
+        alt.Chart(inside)
         .mark_text(size=13, color="white", fontWeight="bold")
         .encode(
             theta=alt.Theta("n:Q", stack=True),
             order=alt.Order("sort_key:Q", sort="ascending"),
             text="label:N",
-            radius=alt.value(112),  # inside the wedge; tweak 105–125 to taste
+            radius=alt.value(112),   # inside the slice
         )
     )
 
-    layered_pie = (pie + labels).configure_view(strokeWidth=0)
+    # “Call-out” labels for tiny slices (placed a bit outside)
+    labels_outside = (
+        alt.Chart(outside)
+        .mark_text(size=12, color="black", fontWeight="bold")
+        .encode(
+            theta=alt.Theta("n:Q", stack=True),
+            order=alt.Order("sort_key:Q", sort="ascending"),
+            text="label:N",
+            radius=alt.value(170),   # just outside the wedge
+        )
+    )
+
+    layered_pie = (pie + labels_inside + labels_outside).configure_view(strokeWidth=0)
     st.altair_chart(layered_pie, use_container_width=True)
 
 st.divider()
