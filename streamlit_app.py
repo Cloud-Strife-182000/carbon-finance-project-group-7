@@ -232,7 +232,7 @@ with tab_overview:
 
         labels_outside = (
             alt.Chart(outside)
-            .mark_text(size=12, color="white", fontWeight="bold")
+            .mark_text(size=12, color="black", fontWeight="bold")
             .encode(
                 theta=alt.Theta("n:Q", stack=True),
                 order=alt.Order("sort_key:Q", sort="ascending"),
