@@ -168,8 +168,6 @@ with tab_overview:
             "Governance Score": "Governance",
         }.get(score_col, "ESG")
 
-        st.subheader(f"{title_prefix} Rating Distribution")
-
         rating_counts = (
             df_f["ESG_Rating_Band"]
             .astype("string").fillna("Unknown")
