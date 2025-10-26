@@ -1,6 +1,6 @@
-# Carbon Finance Dashboard v1.3.9 — Default Banks + KPIs Update
-# Filters (Year, Sector, Score Metric) + KPIs + Tabs (ESG Overview | Team)
-# Green-themed charts + fullscreen-stable pie chart + "x out of total" metric
+# Carbon Finance Dashboard v1.5.0 — No Score Filter + ESG Components Analysis
+# Filters (Year, Sector, Min ESG Score) + KPIs + Tabs (ESG Overview | Team)
+# Green-themed charts + fullscreen-stable pie + ESG component bar chart & legend
 
 import io
 import math
@@ -15,7 +15,7 @@ from PIL import Image, ImageOps, ImageDraw
 # ---------------------------------------------------------
 st.set_page_config(page_title="Carbon Finance Term Project | Group-7", layout="wide")
 st.title("Carbon Finance Term Project | Group-7")
-st.caption("ESG Disclosures & Carbon Finance — Score & Rating Distributions (v1.3.9)")
+st.caption("ESG Disclosures & Carbon Finance — Score & Rating Distributions (v1.5.0)")
 
 BASE_DIR = Path(__file__).parent
 DATA_PATH = BASE_DIR / "data" / "esg_risk_data.csv"
@@ -28,25 +28,6 @@ if DATA_PATH.exists():
 else:
     st.error(f"No file found at {DATA_PATH}. Please place it there.")
     st.stop()
-
-# ---------------------------------------------------------
-# Remove duplicate entries for the same company in a year
-# ---------------------------------------------------------
-if "Company Name" in df.columns and "Last Updated On" in df.columns:
-    # Convert to datetime safely
-    df["Last Updated On"] = pd.to_datetime(df["Last Updated On"], errors="coerce")
-
-    # Extract year from the date
-    df["Year_Updated"] = df["Last Updated On"].dt.year
-
-    # Sort so that the latest update appears first
-    df = df.sort_values("Last Updated On", ascending=False)
-
-    # Drop duplicate company-year pairs, keeping only the latest
-    df = df.drop_duplicates(subset=["Company Name", "Year_Updated"], keep="first")
-
-    # Clean up temporary column
-    df = df.drop(columns=["Year_Updated"])
 
 # ---------------------------------------------------------
 # YEAR PARSING
@@ -63,6 +44,17 @@ if not valid_years and len(available_years) > 0:
     valid_years = available_years[-2:]
 
 # ---------------------------------------------------------
+# DEDUP SAME COMPANY-WITHIN-YEAR (keep latest)
+# ---------------------------------------------------------
+if "Company Name" in df.columns and "Last Updated On" in df.columns:
+    df["Year_Updated"] = df["Last Updated On"].dt.year
+    df = (
+        df.sort_values("Last Updated On", ascending=False)
+          .drop_duplicates(subset=["Company Name", "Year_Updated"], keep="first")
+          .drop(columns=["Year_Updated"])
+    )
+
+# ---------------------------------------------------------
 # FIXED SCORE COLUMNS
 # ---------------------------------------------------------
 FIXED_SCORE_COLS = ["ESG Score", "Environment Score", "Social Score", "Governance Score"]
@@ -71,31 +63,29 @@ if not available_scores:
     st.error("None of the fixed score columns were found.")
     st.stop()
 
+# We no longer let users pick the metric; we analyze by ESG Score
+score_col = "ESG Score" if "ESG Score" in df.columns else available_scores[0]
+
 # ---------------------------------------------------------
-# SIDEBAR FILTERS
+# SIDEBAR FILTERS (Year, Sector, Min ESG Score)
 # ---------------------------------------------------------
 st.sidebar.header("Filters")
 
 year_choice = st.sidebar.selectbox("Year", options=valid_years, index=0)
 df = df[df["Year"] == year_choice].copy()
 
-default_idx = available_scores.index("ESG Score") if "ESG Score" in available_scores else 0
-score_col = st.sidebar.selectbox("Score Metric", available_scores, index=default_idx)
-
+# Numeric enforcement for ESG Score (used across KPIs/charts/filters)
 df[score_col] = pd.to_numeric(df[score_col], errors="coerce")
 df = df.dropna(subset=[score_col])
 
-# Sector filter
 SECTOR_COL = "Sector Classification"
 if SECTOR_COL in df.columns:
     sector_values = sorted(df[SECTOR_COL].astype("string").fillna("Unknown").unique().tolist())
-    
     chosen_sectors = st.sidebar.multiselect(
         "Sectors", options=sector_values, default=[],
         help=f"Filtering by '{SECTOR_COL}' column",
     )
-
-    # If nothing is selected, use all sectors by default
+    # If nothing selected, include all sectors
     if not chosen_sectors:
         chosen_sectors = sector_values
 else:
@@ -106,7 +96,7 @@ score_min = float(df[score_col].min())
 score_max = float(df[score_col].max())
 lo = math.floor(score_min / 5.0) * 5
 hi = math.ceil(score_max / 5.0) * 5
-min_score = st.sidebar.slider("Minimum Score", min_value=float(lo), max_value=float(hi), value=float(lo), step=1.0)
+min_score = st.sidebar.slider("Minimum ESG Score", min_value=float(lo), max_value=float(hi), value=float(lo), step=1.0)
 
 # ---------------------------------------------------------
 # APPLY FILTERS
@@ -148,20 +138,15 @@ n_companies = len(df_f)
 avg_score = float(df_f[score_col].mean())
 med_score = float(df_f[score_col].median())
 
-# Derive dynamic metric labels (e.g., "ESG Score" → "ESG")
-metric_label = score_col.replace(" Score", "")
-
 k1, k2, k3 = st.columns(3)
 with k1:
     st.metric("Companies Analyzed", f"{n_companies:,} / {n_total:,}")
 with k2:
-    st.metric(f"Average {metric_label} Score", f"{avg_score:.1f}")
+    st.metric("Average ESG Score", f"{avg_score:.1f}")
 with k3:
-    st.metric(f"Median {metric_label} Score", f"{med_score:.1f}")
+    st.metric("Median ESG Score", f"{med_score:.1f}")
 
-# ---------------------------------------------------------
-# Additional Info: Year and Sectors Summary
-# ---------------------------------------------------------
+# Year + sectors summary
 if chosen_sectors:
     n_sectors_selected = len(chosen_sectors)
     total_sectors = len(df["Sector Classification"].astype("string").fillna("Unknown").unique())
@@ -185,9 +170,11 @@ tab_overview, tab_team = st.tabs(["📊 ESG Overview", "👥 Team"])
 
 with tab_overview:
     st.markdown("## ESG Performance Dashboard")
+
+    # ---------------- CHARTS (Histogram + Pie) ----------------
     left, right = st.columns(2)
 
-    # ---------------- HISTOGRAM ----------------
+    # Histogram (ESG Score) with green gradient
     with left:
         st.markdown(f"##### {score_col} Distribution (Histogram)")
         score_hist = (
@@ -198,7 +185,7 @@ with tab_overview:
                 y=alt.Y("count():Q", title="Count"),
                 color=alt.Color("count():Q", scale=alt.Scale(scheme="greens"), legend=None),
                 tooltip=[
-                    alt.Tooltip(f"{score_col}:Q", title="Score (binned)", bin=alt.Bin(maxbins=20)),
+                    alt.Tooltip(f"{score_col}:Q", title="ESG Score (binned)", bin=alt.Bin(maxbins=20)),
                     alt.Tooltip("count():Q", title="Count"),
                 ],
             )
@@ -207,16 +194,9 @@ with tab_overview:
         )
         st.altair_chart(score_hist, use_container_width=True)
 
-    # ---------------- PIE ----------------
+    # Pie (ESG Rating Distribution) — fullscreen stable
     with right:
-        title_prefix = {
-            "ESG Score": "ESG",
-            "Environment Score": "Environment",
-            "Social Score": "Social",
-            "Governance Score": "Governance",
-        }.get(score_col, "ESG")
-
-        st.markdown(f"##### {title_prefix} Rating Distribution")
+        st.markdown("##### ESG Rating Distribution")
 
         rating_counts = (
             df_f["ESG_Rating_Band"]
@@ -295,45 +275,128 @@ with tab_overview:
 
         st.altair_chart(final_chart, use_container_width=True)
 
-        # ---------------- TOP PERFORMERS TABLE ----------------
+    # ---------------- ESG COMPONENTS ANALYSIS ----------------
+st.markdown("## ESG Components Analysis")
+st.markdown("##### Average ESG Component Scores")
+
+# Check components availability
+comp_cols = [c for c in ["Environment Score", "Social Score", "Governance Score"] if c in df_f.columns]
+if len(comp_cols) == 0:
+    st.info("Environment, Social, and Governance component columns not found.")
+else:
+    # Compute averages for filtered data
+    comp_avg = (
+        df_f[comp_cols]
+        .mean(numeric_only=True)
+        .rename(index={
+            "Environment Score": "Environment",
+            "Social Score": "Social",
+            "Governance Score": "Governance",
+        })
+        .reset_index()
+    )
+    comp_avg.columns = ["Component", "Average Score"]
+
+    c1, c2 = st.columns([3, 1])
+
+    with c1:
+        # Shared base + fixed 0–100 y scale
+        y_scale = alt.Scale(domain=[0, 100])
+        base = alt.Chart(comp_avg).properties(height=320)
+
+        comp_bar = (
+            base.mark_bar()
+            .encode(
+                x=alt.X("Component:N", title=""),
+                y=alt.Y("Average Score:Q", title="Average Score", scale=y_scale),
+                color=alt.Color(
+                    "Average Score:Q",
+                    scale=alt.Scale(scheme="greens"),
+                    legend=None,
+                ),
+                tooltip=[
+                    alt.Tooltip("Component:N"),
+                    alt.Tooltip("Average Score:Q", format=".1f"),
+                ],
+            )
+        )
+
+        text_labels = (
+            base.mark_text(
+                align="center",
+                baseline="bottom",
+                dy=-4,  # slight upward offset
+                fontWeight="bold",
+                color="#333",
+            )
+            .encode(
+                x=alt.X("Component:N"),
+                y=alt.Y("Average Score:Q", scale=y_scale),
+                text=alt.Text("Average Score:Q", format=".1f"),
+            )
+        )
+
+        # Apply config to the layered chart (not children)
+        comp_layer = alt.layer(comp_bar, text_labels).configure_view(strokeWidth=0)
+
+        st.altair_chart(comp_layer, use_container_width=True)
+
+
+    with c2:
+        # Expanded standalone gradient legend (no dot)
+        legend_df = pd.DataFrame({"val": [0, 100]})
+        legend_chart = (
+            alt.Chart(legend_df)
+            .mark_rect(opacity=0)
+            .encode(
+                color=alt.Color(
+                    "val:Q",
+                    scale=alt.Scale(scheme="greens"),
+                    legend=alt.Legend(
+                        orient="right",
+                        title="Average Score",
+                        gradientLength=220,
+                        gradientThickness=20
+                    ),
+                )
+            )
+            .properties(height=220, width=100)
+            .configure_view(strokeWidth=0)
+        )
+        st.altair_chart(legend_chart, use_container_width=False)
+
+
+
+    # ---------------- TOP PERFORMERS TABLE ----------------
     metric_label = score_col.replace(" Score", "")
     table_title = f"Top 10 {metric_label} Performers in Selected Sectors ({int(year_choice)})"
 
-    # Use the 'Company Name' column directly
     name_col = "Company Name"
-
-    # Make sure it exists
     if name_col not in df_f.columns:
         st.warning("Column 'Company Name' not found in dataset.")
     else:
-        # Choose display columns
         display_cols = [name_col, score_col, "ESG_Rating_Band"]
         col_renames = {
             name_col: "Company Name",
             score_col: f"{metric_label} Score",
             "ESG_Rating_Band": "Rating",
         }
-
-        # Add Sector column if available
         if SECTOR_COL in df_f.columns:
             display_cols.insert(1, SECTOR_COL)
             col_renames[SECTOR_COL] = "Sector"
 
-        # Build Top 10 table
         top10 = (
             df_f.sort_values(score_col, ascending=False)
-            [display_cols]
-            .head(10)
-            .rename(columns=col_renames)
+                [display_cols]
+                .head(10)
+                .rename(columns=col_renames)
         )
         top10[f"{metric_label} Score"] = top10[f"{metric_label} Score"].round(1)
 
-        # Render table
         st.markdown(f"#### {table_title}")
         st.dataframe(top10, use_container_width=True, hide_index=True)
 
-
-    st.divider()
+    # ---------------- DATA PREVIEW ----------------
     with st.expander("Preview Filtered Data (first 100 rows)"):
         st.dataframe(df_f.head(100), use_container_width=True, hide_index=True)
 
