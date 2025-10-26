@@ -1,8 +1,9 @@
-# Carbon Finance Dashboard v1.1.1
-# ESG Score Histogram + Derived Rating Pie + Team (WebP circular)
+# Carbon Finance Dashboard v1.3.1
+# Fixed Score Columns (ESG/Environment/Social/Governance) + Filters + KPIs + Charts + Team (WebP)
 # Title: “Carbon Finance Term Project | Group-7”
 
 import io
+import math
 from pathlib import Path
 import pandas as pd
 import streamlit as st
@@ -13,56 +14,94 @@ from PIL import Image, ImageOps, ImageDraw
 # PAGE SETUP
 # ---------------------------------------------------------
 st.set_page_config(page_title="Carbon Finance Term Project | Group-7", layout="wide")
-
 st.title("Carbon Finance Term Project | Group-7")
-st.caption("ESG Disclosures & Carbon Finance — Score & Rating Distributions (v1.1.1, WebP)")
+st.caption("ESG Disclosures & Carbon Finance — Score & Rating Distributions (v1.3.1, WebP)")
 
-# Base directory (used for data and team photos)
 BASE_DIR = Path(__file__).parent
-
-# ---------------------------------------------------------
-# DATA LOADING (ESG risk file from data folder)
-# ---------------------------------------------------------
-st.sidebar.header("Upload ESG Data (optional)")
-st.sidebar.write(
-    "Upload a CSV that contains an ESG score column (numeric). "
-    "If not provided, the app loads 'data/esg_risk_data.csv' by default."
-)
-
-uploaded = st.sidebar.file_uploader("CSV file", type=["csv"])
 DATA_PATH = BASE_DIR / "data" / "esg_risk_data.csv"
 
-if uploaded:
-    try:
-        df = pd.read_csv(uploaded)
-    except Exception as e:
-        st.error(f"Could not read the uploaded CSV: {e}")
-        st.stop()
+# ---------------------------------------------------------
+# LOAD DATA
+# ---------------------------------------------------------
+if DATA_PATH.exists():
+    df = pd.read_csv(DATA_PATH)
 else:
-    if DATA_PATH.exists():
-        df = pd.read_csv(DATA_PATH)
-    else:
-        st.error(f"No file found at {DATA_PATH}. Please upload a CSV or place it in that folder.")
-        st.stop()
+    st.error(f"No file found at {DATA_PATH}. Please place it there.")
+    st.stop()
 
 # ---------------------------------------------------------
-# COLUMN SELECTION (choose ESG score; rating is derived)
+# FIXED SCORE COLUMNS (only these four)
 # ---------------------------------------------------------
-st.subheader("Select ESG Score Column")
+FIXED_SCORE_COLS = ["ESG Score", "Environment Score", "Social Score", "Governance Score"]
+available_scores = [c for c in FIXED_SCORE_COLS if c in df.columns]
 
-# heuristic candidates
-score_candidates = [c for c in df.columns if c.lower() in {"esg_score", "score", "esg"}]
-score_candidates += [c for c in df.select_dtypes("number").columns if c not in score_candidates]
+if not available_scores:
+    st.error("None of the fixed score columns were found: "
+             "'ESG Score', 'Environment Score', 'Social Score', 'Governance Score'.")
+    st.stop()
 
-score_col = st.selectbox("ESG score column (numeric)", score_candidates or list(df.columns))
+st.subheader("Choose Score Metric")
+score_col = st.selectbox("Score column to analyze", available_scores)
 
-# type enforcement for score
+# numeric enforcement
 df = df.copy()
 df[score_col] = pd.to_numeric(df[score_col], errors="coerce")
 df = df.dropna(subset=[score_col])
 
 # ---------------------------------------------------------
-# DERIVE RATING BANDS (your criteria)
+# SECTOR FILTER: explicit 'Sector Classification'
+# ---------------------------------------------------------
+SECTOR_COL = "Sector Classification"
+if SECTOR_COL not in df.columns:
+    st.warning(f"Column '{SECTOR_COL}' not found. Sector filter will be hidden.")
+    sector_col = None
+else:
+    sector_col = SECTOR_COL
+
+# ---------------------------------------------------------
+# SIDEBAR FILTERS
+# ---------------------------------------------------------
+st.sidebar.header("Filters")
+
+# Sectors multiselect
+if sector_col:
+    sector_values = sorted(
+        df[sector_col].astype("string").fillna("Unknown").unique().tolist(),
+        key=lambda x: (x is None, str(x))
+    )
+    chosen_sectors = st.sidebar.multiselect(
+        "Sectors", options=sector_values, default=sector_values,
+        help=f"Filtering by '{sector_col}' column",
+    )
+else:
+    chosen_sectors = None
+
+# Minimum score slider (based on selected score_col)
+score_min = float(df[score_col].min())
+score_max = float(df[score_col].max())
+lo = math.floor(score_min / 5.0) * 5
+hi = math.ceil(score_max / 5.0) * 5
+min_score = st.sidebar.slider(
+    "Minimum Score", min_value=float(lo), max_value=float(hi),
+    value=float(lo), step=1.0,
+)
+
+# ---------------------------------------------------------
+# APPLY FILTERS
+# ---------------------------------------------------------
+df_f = df.copy()
+if sector_col and chosen_sectors is not None:
+    df_f[sector_col] = df_f[sector_col].astype("string").fillna("Unknown")
+    df_f = df_f[df_f[sector_col].isin(chosen_sectors)]
+df_f = df_f[df_f[score_col] >= min_score]
+
+if len(df_f) == 0:
+    st.warning("No rows match the current filters. Adjust sector selection or minimum score.")
+    st.stop()
+
+# ---------------------------------------------------------
+# RATING BANDS (from selected score)
+# AAA (>=85), AA (75–84), A (65–74), BBB (55–64), BB (<55)
 # ---------------------------------------------------------
 def map_rating(score):
     if pd.isna(score):
@@ -78,20 +117,37 @@ def map_rating(score):
     else:
         return "BB"
 
-df["ESG_Rating_Band"] = df[score_col].apply(map_rating)
+df_f["ESG_Rating_Band"] = df_f[score_col].apply(map_rating)
 
 # ---------------------------------------------------------
-# VISUALS
+# KPIs
+# ---------------------------------------------------------
+n_companies = len(df_f)
+avg_score = float(df_f[score_col].mean())
+med_score = float(df_f[score_col].median())
+
+k1, k2, k3 = st.columns(3)
+with k1:
+    st.metric("Companies Analyzed", f"{n_companies:,}")
+with k2:
+    st.metric("Average Score", f"{avg_score:.1f}")
+with k3:
+    st.metric("Median Score", f"{med_score:.1f}")
+
+st.divider()
+
+# ---------------------------------------------------------
+# CHARTS
 # ---------------------------------------------------------
 left, right = st.columns(2)
 
 with left:
-    st.subheader("ESG Score Distribution (Histogram)")
+    st.subheader(f"{score_col} Distribution (Histogram)")
     score_hist = (
-        alt.Chart(df)
+        alt.Chart(df_f)
         .mark_bar()
         .encode(
-            x=alt.X(f"{score_col}:Q", bin=alt.Bin(maxbins=20), title="ESG Score"),
+            x=alt.X(f"{score_col}:Q", bin=alt.Bin(maxbins=20), title=score_col),
             y=alt.Y("count():Q", title="Count"),
             tooltip=[
                 alt.Tooltip(f"{score_col}:Q", title="Score (binned)", bin=alt.Bin(maxbins=20)),
@@ -103,19 +159,15 @@ with left:
     st.altair_chart(score_hist, use_container_width=True)
 
 with right:
-    st.subheader("ESG Rating Distribution (Derived from Score)")
-
-    # Build counts with guaranteed column names: ['rating', 'n']
+    st.subheader("Rating Distribution (Derived from Selected Score)")
     rating_counts = (
-        df["ESG_Rating_Band"]
+        df_f["ESG_Rating_Band"]
         .astype("string")
         .fillna("Unknown")
-        .value_counts(dropna=False)   # Series indexed by rating
-        .rename_axis("rating")        # index name -> 'rating'
-        .reset_index(name="n")        # counts in column 'n'
+        .value_counts(dropna=False)
+        .rename_axis("rating")
+        .reset_index(name="n")
     )
-
-    # Explicit order (only keep those present; Unknown last if present)
     order = ["AAA", "AA", "A", "BBB", "BB", "Unknown"]
     present_order = [r for r in order if r in rating_counts["rating"].unique()]
     rating_counts["rating"] = pd.Categorical(
@@ -140,8 +192,8 @@ with right:
 
 st.divider()
 
-with st.expander("Preview Data (first 100 rows)"):
-    st.dataframe(df.head(100), use_container_width=True, hide_index=True)
+with st.expander("Preview Filtered Data (first 100 rows)"):
+    st.dataframe(df_f.head(100), use_container_width=True, hide_index=True)
 
 st.divider()
 
