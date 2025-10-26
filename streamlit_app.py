@@ -230,16 +230,17 @@ with tab_overview:
             )
         )
 
-        labels_outside = (
-            alt.Chart(outside)
-            .mark_text(size=12, color="black", fontWeight="bold")
-            .encode(
-                theta=alt.Theta("n:Q", stack=True),
-                order=alt.Order("sort_key:Q", sort="ascending"),
-                text="label:N",
-                radius=alt.value(170),  # outside the slice
-            )
+    # “Call-out” labels for tiny slices (placed a bit outside)
+    labels_outside = (
+        alt.Chart(outside)
+        .mark_text(size=12, color="black", fontWeight="bold")
+        .encode(
+            theta=alt.Theta("n:Q", stack=True),
+            order=alt.Order("sort_key:Q", sort="ascending"),
+            text="label:N",
+            radius=alt.value(170),   # just outside the wedge
         )
+    )
 
         layered_pie = (pie + labels_inside + labels_outside).configure_view(strokeWidth=0)
         st.altair_chart(layered_pie, use_container_width=True)
