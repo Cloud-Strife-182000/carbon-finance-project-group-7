@@ -13,9 +13,23 @@ from PIL import Image, ImageOps, ImageDraw
 # ---------------------------------------------------------
 # PAGE SETUP
 # ---------------------------------------------------------
-st.set_page_config(page_title="Carbon Finance Term Project | Group-7", layout="wide")
-st.title("Carbon Finance Term Project | Group-7")
-st.caption("ESG Disclosures & Carbon Finance — Score & Rating Distributions (v1.5.0)")
+# Page setup
+st.set_page_config(
+    page_title="ESG Disclosures and Carbon Finance Flows in Indian Capital Markets",
+    layout="wide"
+)
+
+# Title
+st.title("ESG Disclosures and Carbon Finance Flows in Indian Capital Markets")
+st.markdown(
+    """
+    <h3 style='text-align: left; color: #333; margin-top: -5px;'>
+        Carbon Finance Term Project | Group-7 | CaF-B
+    </h3>
+    """,
+    unsafe_allow_html=True
+)
+st.divider()
 
 BASE_DIR = Path(__file__).parent
 DATA_PATH = BASE_DIR / "data" / "esg_risk_data.csv"
@@ -155,7 +169,7 @@ else:
 
 st.markdown(
     f"""
-    <div style="margin-top:-10px; font-size:0.95rem; color:gray;">
+    <div style="margin-top:-10px; margin-bottom:20px; font-size:0.95rem; color:gray;">
         <b>Year:</b> {year_choice} &nbsp;&nbsp;|&nbsp;&nbsp;
         <b>Sectors Chosen:</b> {n_sectors_selected} / {total_sectors}
     </div>
@@ -511,7 +525,7 @@ with tab_sector:
 # TEAM TAB
 # ---------------------------------------------------------
 with tab_team:
-    st.subheader("Project Team — Group 7")
+    st.subheader("Project Team — Group 7 | CaF-B")
 
     TEAM_DIR = BASE_DIR / "team_photos"
     team = [
