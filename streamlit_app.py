@@ -242,8 +242,8 @@ with tab_overview:
         )
     )
 
-        layered_pie = (pie + labels_inside + labels_outside).configure_view(strokeWidth=0)
-        st.altair_chart(layered_pie, use_container_width=True)
+    layered_pie = (pie + labels_inside + labels_outside).configure_view(strokeWidth=0)
+    st.altair_chart(layered_pie, use_container_width=True)
 
     st.divider()
     with st.expander("Preview Filtered Data (first 100 rows)"):
