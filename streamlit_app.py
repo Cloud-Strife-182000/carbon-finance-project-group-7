@@ -297,7 +297,7 @@ else:
     )
     comp_avg.columns = ["Component", "Average Score"]
 
-    c1, c2 = st.columns([3, 1])
+    c1, c2 = st.columns([3, 1.3])
 
     with c1:
         # Shared base + fixed 0–100 y scale
@@ -360,7 +360,7 @@ else:
                     ),
                 )
             )
-            .properties(height=220, width=100)
+            .properties(height=220, width=140)
             .configure_view(strokeWidth=0)
         )
         st.altair_chart(legend_chart, use_container_width=False)
