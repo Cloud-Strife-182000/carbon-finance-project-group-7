@@ -8,6 +8,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 import altair as alt
+import numpy as np
 from PIL import Image, ImageOps, ImageDraw
 
 # ---------------------------------------------------------
@@ -126,25 +127,6 @@ if len(df_f) == 0:
     st.stop()
 
 # ---------------------------------------------------------
-# RATING BANDS
-# ---------------------------------------------------------
-def map_rating(score):
-    if pd.isna(score):
-        return "Unknown"
-    if score >= 85:
-        return "AAA"
-    elif score >= 75:
-        return "AA"
-    elif score >= 65:
-        return "A"
-    elif score >= 55:
-        return "BBB"
-    else:
-        return "BB"
-
-df_f["ESG_Rating_Band"] = df_f[score_col].apply(map_rating)
-
-# ---------------------------------------------------------
 # KPIs
 # ---------------------------------------------------------
 
@@ -211,98 +193,152 @@ with tab_overview:
         )
         st.altair_chart(score_hist, use_container_width=True)
 
-    # Pie (ESG Rating Distribution) — fullscreen stable
+    # Pie (ESG Rating Distribution via Category) — aligned tooltips/labels
     with right:
         st.markdown("##### ESG Rating Distribution")
 
-        rating_counts = (
-            df_f["ESG_Rating_Band"]
-            .astype("string").fillna("Unknown")
-            .value_counts(dropna=False)
-            .rename_axis("rating").reset_index(name="n")
-        )
-
-        desired_order = ["AAA", "AA", "A", "BBB", "BB", "Unknown"]
-        order_index = {lab: i for i, lab in enumerate(desired_order)}
-        rating_counts["sort_key"] = rating_counts["rating"].map(order_index).fillna(999).astype(int)
-        rating_counts = rating_counts.sort_values("sort_key").reset_index(drop=True)
-
-        total_n = rating_counts["n"].sum()
-        rating_counts["pct"] = (rating_counts["n"] / total_n * 100).round(1)
-        rating_counts["label"] = rating_counts["pct"].astype(int).astype(str) + "%"
-
-        green_palette = ['#00441b', '#006d2c', '#238b45', '#41ae76', '#66c2a4', '#99d8c9']
-        palette = green_palette[: len(rating_counts)]
-
-        base = alt.Chart(rating_counts).properties(width=400, height=400)
-
-        pie = (
-            base
-            .mark_arc(outerRadius=150, innerRadius=60, cornerRadius=5)
-            .encode(
-                theta=alt.Theta("n:Q", stack=True, title=""),
-                order=alt.Order("sort_key:Q", sort="ascending"),
-                color=alt.Color(
-                    "rating:N",
-                    title="Rating",
-                    scale=alt.Scale(domain=rating_counts["rating"].tolist(), range=palette),
-                    sort=None,
-                ),
-                tooltip=[
-                    alt.Tooltip("rating:N", title="Rating"),
-                    alt.Tooltip("n:Q", title="Count"),
-                    alt.Tooltip("pct:Q", title="Share (%)"),
-                ],
+        if "Category" not in df_f.columns:
+            st.warning("Column 'Category' not found — cannot build rating distribution.")
+        else:
+            # Build counts
+            # Build counts (Category-based)
+            rating_counts = (
+                df_f["Category"]
+                .astype("string").fillna("Unknown")
+                .value_counts(dropna=False)
+                .reset_index()
             )
-        )
+            rating_counts.columns = ["rating", "n"]
 
-        MIN_LABEL_PCT = 8
-        inside = rating_counts[rating_counts["pct"] >= MIN_LABEL_PCT]
-        outside = rating_counts[rating_counts["pct"] < MIN_LABEL_PCT]
+            # Canonical order: sort by count desc (or keep your preferred order)
+            rating_counts = rating_counts.sort_values("n", ascending=False).reset_index(drop=True)
+            rating_order = rating_counts["rating"].tolist()
+            rating_counts["sort_key"] = rating_counts.index.astype(int)
 
-        labels_inside = (
-            alt.Chart(inside)
-            .mark_text(size=13, color="white", fontWeight="bold")
-            .encode(
-                theta=alt.Theta("n:Q", stack=True),
-                order=alt.Order("sort_key:Q", sort="ascending"),
-                text="label:N",
-                radius=alt.value(112),
-                tooltip=[
-                    alt.Tooltip("rating:N", title="Rating"),
-                    alt.Tooltip("n:Q", title="Count"),
-                    alt.Tooltip("pct:Q", title="Share (%)"),
-                ],
+            # Shares + labels
+            total_n = float(rating_counts["n"].sum())
+            rating_counts["pct"] = (rating_counts["n"] / total_n * 100).round(1)
+            rating_counts["label"] = rating_counts["pct"].astype(int).astype(str) + "%"
+
+            # ---------- NEW: compute mid-angles for conditional alignment ----------
+            rating_counts["_cum"] = rating_counts["n"].cumsum()
+            rating_counts["_start"] = rating_counts["_cum"] - rating_counts["n"]
+            rating_counts["angle"] = ((rating_counts["_start"] + rating_counts["_cum"]) / 2.0) / total_n * 2 * np.pi
+            rating_counts["cosA"] = np.cos(rating_counts["angle"])
+            rating_counts["absCos"] = rating_counts["cosA"].abs()
+
+            # Split for inside/outside labels
+            MIN_LABEL_PCT = 8
+            inside  = rating_counts[rating_counts["pct"] >= MIN_LABEL_PCT]
+            outside = rating_counts[rating_counts["pct"] <  MIN_LABEL_PCT]
+
+            # Base + pie (unchanged)
+            green_palette = ['#00441b', '#006d2c', '#238b45', '#41ae76', '#66c2a4', '#99d8c9', '#ccece6']
+            palette = green_palette[: len(rating_counts)]
+            base = alt.Chart(rating_counts).properties(width=400, height=400)
+
+            pie = (
+                base
+                .mark_arc(outerRadius=150, innerRadius=60, cornerRadius=5)
+                .encode(
+                    theta=alt.Theta("n:Q", stack=True, title=""),
+                    order=alt.Order("sort_key:Q", sort="ascending"),
+                    color=alt.Color(
+                        "rating:N",
+                        title="Rating",
+                        scale=alt.Scale(domain=rating_order, range=palette),
+                        sort=None,
+                    ),
+                    tooltip=[
+                        alt.Tooltip("rating:N", title="Category"),
+                        alt.Tooltip("n:Q", title="Count"),
+                        alt.Tooltip("pct:Q", title="Share (%)"),
+                    ],
+                )
             )
-        )
 
-        labels_outside = (
-            alt.Chart(outside)
-            .mark_text(size=12, color="black", fontWeight="bold")
-            .encode(
-                theta=alt.Theta("n:Q", stack=True),
-                order=alt.Order("sort_key:Q", sort="ascending"),
-                text="label:N",
-                radius=alt.value(175),
-                tooltip=[
-                    alt.Tooltip("rating:N", title="Rating"),
-                    alt.Tooltip("n:Q", title="Count"),
-                    alt.Tooltip("pct:Q", title="Share (%)"),
-                ],
+            labels_inside = (
+                alt.Chart(inside)
+                .mark_text(size=13, color="white", fontWeight="bold")
+                .encode(
+                    theta=alt.Theta("n:Q", stack=True),
+                    order=alt.Order("sort_key:Q", sort="ascending"),
+                    text="label:N",
+                    radius=alt.value(112),
+                    tooltip=[
+                        alt.Tooltip("rating:N", title="Category"),
+                        alt.Tooltip("n:Q", title="Count"),
+                        alt.Tooltip("pct:Q", title="Share (%)"),
+                    ],
+                )
             )
-        )
-        
-        final_chart = alt.LayerChart(
-            layer=[pie, labels_inside, labels_outside],
-            config={
-                "view": {"stroke": "transparent"},
-                "legend": {"orient": "right", "titleFontSize": 13, "labelFontSize": 12},
-            },
-        ).properties(width=400, height=400)
 
-        st.altair_chart(final_chart, use_container_width=True)
+            # --- Outside labels split into 3 layers for proper alignment ---
+            outside_center = outside[outside["absCos"] < 0.1]
+            outside_right  = outside[(outside["absCos"] >= 0.1) & (outside["cosA"] > 0)]
+            outside_left   = outside[(outside["absCos"] >= 0.1) & (outside["cosA"] <= 0)]
 
-        # ---------------- ESG COMPONENTS (no section header) ----------------
+            labels_outside_center = (
+                alt.Chart(outside_center)
+                .mark_text(size=12, color="black", fontWeight="bold", align="center", dx=0)
+                .encode(
+                    theta=alt.Theta("n:Q", stack=True),
+                    order=alt.Order("sort_key:Q", sort="ascending"),
+                    text="label:N",
+                    radius=alt.value(175),
+                    tooltip=[
+                        alt.Tooltip("rating:N", title="Category"),
+                        alt.Tooltip("n:Q", title="Count"),
+                        alt.Tooltip("pct:Q", title="Share (%)"),
+                    ],
+                )
+            )
+
+            labels_outside_right = (
+                alt.Chart(outside_right)
+                .mark_text(size=12, color="black", fontWeight="bold", align="left", dx=-75)
+                .encode(
+                    theta=alt.Theta("n:Q", stack=True),
+                    order=alt.Order("sort_key:Q", sort="ascending"),
+                    text="label:N",
+                    radius=alt.value(175),
+                    tooltip=[
+                        alt.Tooltip("rating:N", title="Category"),
+                        alt.Tooltip("n:Q", title="Count"),
+                        alt.Tooltip("pct:Q", title="Share (%)"),
+                    ],
+                )
+            )
+
+            labels_outside_left = (
+                alt.Chart(outside_left)
+                .mark_text(size=12, color="black", fontWeight="bold", align="right", dx=75)
+                .encode(
+                    theta=alt.Theta("n:Q", stack=True),
+                    order=alt.Order("sort_key:Q", sort="ascending"),
+                    text="label:N",
+                    radius=alt.value(175),
+                    tooltip=[
+                        alt.Tooltip("rating:N", title="Category"),
+                        alt.Tooltip("n:Q", title="Count"),
+                        alt.Tooltip("pct:Q", title="Share (%)"),
+                    ],
+                )
+            )
+
+            # Layer everything (keep your existing config)
+            final_chart = alt.LayerChart(
+                layer=[pie, labels_inside, labels_outside_center, labels_outside_right, labels_outside_left],
+                config={
+                    "view": {"stroke": "transparent"},
+                    "legend": {"orient": "right", "titleFontSize": 13, "labelFontSize": 12},
+                },
+            ).properties(width=400, height=400)
+
+            st.altair_chart(final_chart, use_container_width=True)
+
+            
+    # ---------------- ESG COMPONENTS (no section header) ----------------
     st.markdown("##### Average ESG Component Scores")
 
     # Check components availability
@@ -381,11 +417,11 @@ with tab_overview:
     if name_col not in df_f.columns:
         st.warning("Column 'Company Name' not found in dataset.")
     else:
-        display_cols = [name_col, score_col, "ESG_Rating_Band"]
+        display_cols = [name_col, score_col, "Category"]
         col_renames = {
             name_col: "Company Name",
             score_col: f"{metric_label} Score",
-            "ESG_Rating_Band": "Rating",
+            "Category": "Rating",
         }
         if SECTOR_COL in df_f.columns:
             display_cols.insert(1, SECTOR_COL)
@@ -553,3 +589,20 @@ with tab_team:
                     st.markdown(f"**{member['name']}** (Image missing)")
                 st.markdown(f"**{member['name']}**", unsafe_allow_html=True)
             idx += 1
+
+# ---------------------------------------------------------
+# Data Source Footer
+# ---------------------------------------------------------
+
+st.markdown("<hr>", unsafe_allow_html=True)
+st.markdown(
+    """
+    <div style='text-align: center; font-size: 0.9rem; color: gray; margin-top: 10px;'>
+        <b>Data Source:</b> 
+        <a href='https://india360.esgrisk.ai/Accounts/Ratinglist' target='_blank' style='text-decoration: none; color: #2E8B57;'>
+            india360.esgrisk.ai
+        </a>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
