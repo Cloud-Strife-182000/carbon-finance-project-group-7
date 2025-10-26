@@ -1,6 +1,6 @@
-# Carbon Finance Dashboard v1.3.7 — Fullscreen Ready
+# Carbon Finance Dashboard v1.3.9 — Default Banks + KPIs Update
 # Filters (Year, Sector, Score Metric) + KPIs + Tabs (ESG Overview | Team)
-# Green-themed charts + smart pie labels + fullscreen-stable pie chart
+# Green-themed charts + fullscreen-stable pie chart + "x out of total" metric
 
 import io
 import math
@@ -15,7 +15,7 @@ from PIL import Image, ImageOps, ImageDraw
 # ---------------------------------------------------------
 st.set_page_config(page_title="Carbon Finance Term Project | Group-7", layout="wide")
 st.title("Carbon Finance Term Project | Group-7")
-st.caption("ESG Disclosures & Carbon Finance — Score & Rating Distributions (v1.3.7)")
+st.caption("ESG Disclosures & Carbon Finance — Score & Rating Distributions (v1.3.9)")
 
 BASE_DIR = Path(__file__).parent
 DATA_PATH = BASE_DIR / "data" / "esg_risk_data.csv"
@@ -69,8 +69,10 @@ df = df.dropna(subset=[score_col])
 SECTOR_COL = "Sector Classification"
 if SECTOR_COL in df.columns:
     sector_values = sorted(df[SECTOR_COL].astype("string").fillna("Unknown").unique().tolist())
+    # Default to "Banks" if present
+    default_sector = ["Banks"] if "Banks" in sector_values else sector_values
     chosen_sectors = st.sidebar.multiselect(
-        "Sectors", options=sector_values, default=sector_values,
+        "Sectors", options=sector_values, default=default_sector,
         help=f"Filtering by '{SECTOR_COL}' column",
     )
 else:
@@ -118,17 +120,37 @@ df_f["ESG_Rating_Band"] = df_f[score_col].apply(map_rating)
 # ---------------------------------------------------------
 # KPIs
 # ---------------------------------------------------------
+n_total = len(df)
 n_companies = len(df_f)
 avg_score = float(df_f[score_col].mean())
 med_score = float(df_f[score_col].median())
 
 k1, k2, k3 = st.columns(3)
 with k1:
-    st.metric("Companies Analyzed", f"{n_companies:,}")
+    st.metric("Companies Analyzed", f"{n_companies:,} / {n_total:,}")
 with k2:
     st.metric("Average Score", f"{avg_score:.1f}")
 with k3:
     st.metric("Median Score", f"{med_score:.1f}")
+
+# ---------------------------------------------------------
+# Additional Info: Year and Sectors Summary
+# ---------------------------------------------------------
+if chosen_sectors:
+    n_sectors_selected = len(chosen_sectors)
+    total_sectors = len(df["Sector Classification"].astype("string").fillna("Unknown").unique())
+else:
+    n_sectors_selected = total_sectors = len(df["Sector Classification"].astype("string").fillna("Unknown").unique())
+
+st.markdown(
+    f"""
+    <div style="margin-top:-10px; font-size:0.95rem; color:gray;">
+        <b>Year:</b> {year_choice} &nbsp;&nbsp;|&nbsp;&nbsp;
+        <b>Sectors Chosen:</b> {n_sectors_selected} / {total_sectors}
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 # ---------------------------------------------------------
 # TABS
@@ -159,7 +181,7 @@ with tab_overview:
         )
         st.altair_chart(score_hist, use_container_width=True)
 
-    # ---------------- PIE (Fullscreen Ready) ----------------
+    # ---------------- PIE ----------------
     with right:
         title_prefix = {
             "ESG Score": "ESG",
@@ -237,17 +259,13 @@ with tab_overview:
             )
         )
 
-        # Fullscreen-stable final chart
         final_chart = alt.LayerChart(
             layer=[pie, labels_inside, labels_outside],
             config={
                 "view": {"stroke": "transparent"},
                 "legend": {"orient": "right", "titleFontSize": 13, "labelFontSize": 12},
             },
-        ).properties(
-            width=400,
-            height=400
-        )
+        ).properties(width=400, height=400)
 
         st.altair_chart(final_chart, use_container_width=True)
 
