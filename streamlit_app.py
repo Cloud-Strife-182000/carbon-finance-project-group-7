@@ -83,7 +83,7 @@ score_col = "ESG Score" if "ESG Score" in df.columns else available_scores[0]
 # ---------------------------------------------------------
 # SIDEBAR FILTERS (Year, Sector, Min ESG Score)
 # ---------------------------------------------------------
-st.sidebar.header("Filters")
+st.sidebar.header("ESG Data Filters")
 
 year_choice = st.sidebar.selectbox("Year", options=valid_years, index=0)
 df = df[df["Year"] == year_choice].copy()
@@ -147,6 +147,9 @@ df_f["ESG_Rating_Band"] = df_f[score_col].apply(map_rating)
 # ---------------------------------------------------------
 # KPIs
 # ---------------------------------------------------------
+
+st.markdown("## ESG Data Summary")
+
 n_total = len(df)
 n_companies = len(df_f)
 avg_score = float(df_f[score_col].mean())
@@ -320,71 +323,55 @@ with tab_overview:
         )
         comp_avg.columns = ["Component", "Average Score"]
 
-        # Wider legend column to fit title
-        c1, c2 = st.columns([3, 1.3])
+        # Enforce component order
+        comp_avg["Component"] = pd.Categorical(
+            comp_avg["Component"],
+            categories=["Environment", "Social", "Governance"],
+            ordered=True,
+        )
+        comp_avg = comp_avg.sort_values("Component")
 
-        with c1:
-            # Shared base + fixed 0–100 y scale + labels
-            y_scale = alt.Scale(domain=[0, 100])
-            base = alt.Chart(comp_avg).properties(height=320)
+        # Single chart with integrated legend (no separate c2 column)
+        y_scale = alt.Scale(domain=[0, 100])
 
-            comp_bar = (
-                base.mark_bar()
-                .encode(
-                    x=alt.X("Component:N", title="", sort=["Environment", "Social", "Governance"]),
-                    y=alt.Y("Average Score:Q", title="Average Score", scale=y_scale),
-                    color=alt.Color(
-                        "Average Score:Q",
-                        scale=alt.Scale(scheme="greens"),
-                        legend=None,
+        bar_chart = (
+            alt.Chart(comp_avg)
+            .mark_bar()
+            .encode(
+                x=alt.X("Component:N", title="", sort=["Environment", "Social", "Governance"]),
+                y=alt.Y("Average Score:Q", title="Average Score", scale=y_scale),
+                color=alt.Color(
+                    "Average Score:Q",
+                    scale=alt.Scale(scheme="greens", domain=[0, 100]),
+                    legend=alt.Legend(
+                        title="Average Score",
+                        orient="right",
+                        gradientLength=180,
+                        gradientThickness=16,
+                        labelFontSize=12,
+                        titleFontSize=13,
                     ),
-                    tooltip=[
-                        alt.Tooltip("Component:N"),
-                        alt.Tooltip("Average Score:Q", format=".1f"),
-                    ],
-                )
+                ),
+                tooltip=[
+                    alt.Tooltip("Component:N"),
+                    alt.Tooltip("Average Score:Q", format=".1f"),
+                ],
             )
+            .properties(height=320)
+        )
 
-            text_labels = (
-                base.mark_text(
-                    align="center",
-                    baseline="bottom",
-                    dy=-4,
-                    fontWeight="bold",
-                    color="#333",
-                )
-                .encode(
-                    x=alt.X("Component:N", sort=["Environment", "Social", "Governance"]),
-                    y=alt.Y("Average Score:Q", scale=y_scale),
-                    text=alt.Text("Average Score:Q", format=".1f"),
-                )
+        # Value labels above bars
+        labels = (
+            alt.Chart(comp_avg)
+            .mark_text(align="center", baseline="bottom", dy=-5, fontWeight="bold", color="#222")
+            .encode(
+                x=alt.X("Component:N", sort=["Environment", "Social", "Governance"]),
+                y=alt.Y("Average Score:Q", scale=y_scale),
+                text=alt.Text("Average Score:Q", format=".1f"),
             )
+        )
 
-            comp_layer = alt.layer(comp_bar, text_labels).configure_view(strokeWidth=0)
-            st.altair_chart(comp_layer, use_container_width=True)
-
-        with c2:
-            # Expanded standalone gradient legend (no dot)
-            legend_df = pd.DataFrame({"val": [0, 100]})
-            legend_chart = (
-                alt.Chart(legend_df)
-                .mark_rect(opacity=0)  # hide marks, keep legend only
-                .encode(
-                    color=alt.Color(
-                        "val:Q",
-                        scale=alt.Scale(scheme="greens"),
-                        legend=alt.Legend(
-                            orient="right",
-                            title="Average Score",
-                            gradientLength=220,
-                            gradientThickness=20
-                        ),
-                    )
-                )
-                .properties(height=220, width=140)
-                .configure_view(strokeWidth=0)
-            )
-            st.altair_chart(legend_chart, use_container_width=False)
+        st.altair_chart((bar_chart + labels).configure_view(strokeWidth=0), use_container_width=True)
 
     # ---------------- TOP PERFORMERS TABLE ----------------
     metric_label = "ESG"  # fixed metric label since we removed metric filter
@@ -432,9 +419,7 @@ with tab_sector:
     if SECTOR_COL not in df_f.columns:
         st.info(f"Column '{SECTOR_COL}' not found. Sector-wise analysis is unavailable.")
     else:
-        # -----------------------------------------------------
-        # COMPONENT-WISE HEATMAP BY SECTOR
-        # -----------------------------------------------------
+        # -------- Component-wise heatmap by sector (legend integrated) --------
         st.markdown("##### Component-wise ESG Scores by Sector")
 
         comp_cols = ["Environment Score", "Social Score", "Governance Score"]
@@ -442,7 +427,6 @@ with tab_sector:
         if not valid_comps:
             st.info("Environment, Social, and Governance component columns not found.")
         else:
-            # Compute average component scores by sector
             comp_sector = (
                 df_f.groupby(SECTOR_COL)[valid_comps]
                 .mean(numeric_only=True)
@@ -451,7 +435,7 @@ with tab_sector:
                 .rename(columns={SECTOR_COL: "Sector"})
             )
 
-            # Clean and fix component ordering
+            # Clean labels + enforce column order
             comp_sector["Component"] = comp_sector["Component"].replace({
                 "Environment Score": "Environment",
                 "Social Score": "Social",
@@ -463,67 +447,50 @@ with tab_sector:
                 ordered=True,
             )
 
-            # Sort sectors alphabetically or by ESG Score order (optional)
+            # Order sectors (alphabetical; change if you prefer a score-based order)
             sector_order = sorted(comp_sector["Sector"].unique().tolist())
 
-            # Chart height scaling
             heat_h = max(260, 26 * len(sector_order))
-            c1, c2 = st.columns([3, 1.3])
 
-            with c1:
-                comp_heatmap = (
-                    alt.Chart(comp_sector)
-                    .mark_rect()
-                    .encode(
-                        x=alt.X(
-                            "Component:N",
-                            title="Component",
-                            sort=["Environment", "Social", "Governance"],
+            # Single heatmap with integrated legend on the right
+            comp_heatmap = (
+                alt.Chart(comp_sector)
+                .mark_rect()
+                .encode(
+                    x=alt.X(
+                        "Component:N",
+                        title="Component",
+                        sort=["Environment", "Social", "Governance"],
+                    ),
+                    y=alt.Y("Sector:N", sort=sector_order, title="Sector"),
+                    color=alt.Color(
+                        "Average Score:Q",
+                        scale=alt.Scale(domain=[0, 100], scheme="redyellowgreen"),
+                        legend=alt.Legend(
+                            title="Average Score",
+                            orient="right",
+                            gradientLength=240,
+                            gradientThickness=20,
+                            labelFontSize=12,
+                            titleFontSize=13,
                         ),
-                        y=alt.Y("Sector:N", sort=sector_order, title="Sector"),
-                        color=alt.Color(
-                            "Average Score:Q",
-                            scale=alt.Scale(domain=[0, 100], scheme="redyellowgreen"),
-                            legend=None,
-                        ),
-                        tooltip=[
-                            alt.Tooltip("Sector:N"),
-                            alt.Tooltip("Component:N"),
-                            alt.Tooltip("Average Score:Q", format=".1f"),
-                        ],
-                    )
-                    .properties(height=heat_h)
-                    .configure_view(strokeWidth=0)
+                    ),
+                    tooltip=[
+                        alt.Tooltip("Sector:N"),
+                        alt.Tooltip("Component:N"),
+                        alt.Tooltip("Average Score:Q", format=".1f"),
+                    ],
                 )
-                st.altair_chart(comp_heatmap, use_container_width=True)
+                .properties(height=heat_h)
+                .configure_view(strokeWidth=0)
+            )
 
-            with c2:
-                # Expanded standalone gradient legend (no dot)
-                legend_df = pd.DataFrame({"val": [0, 100]})
-                legend_chart = (
-                    alt.Chart(legend_df)
-                    .mark_rect(opacity=0)
-                    .encode(
-                        color=alt.Color(
-                            "val:Q",
-                            scale=alt.Scale(domain=[0, 100], scheme="redyellowgreen"),
-                            legend=alt.Legend(
-                                orient="right",
-                                title="Average Score",
-                                gradientLength=240,
-                                gradientThickness=22,
-                            ),
-                        )
-                    )
-                    .properties(height=240, width=160)
-                    .configure_view(strokeWidth=0)
-                )
-                st.altair_chart(legend_chart, use_container_width=False)
-
+            st.altair_chart(comp_heatmap, use_container_width=True)
 
 # ---------------------------------------------------------
 # TEAM TAB
 # ---------------------------------------------------------
+
 with tab_team:
     st.subheader("Project Team — Group 7 | CaF-B")
 
