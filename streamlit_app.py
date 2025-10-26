@@ -66,15 +66,19 @@ score_col = st.sidebar.selectbox("Score Metric", available_scores, index=default
 df[score_col] = pd.to_numeric(df[score_col], errors="coerce")
 df = df.dropna(subset=[score_col])
 
+# Sector filter
 SECTOR_COL = "Sector Classification"
 if SECTOR_COL in df.columns:
     sector_values = sorted(df[SECTOR_COL].astype("string").fillna("Unknown").unique().tolist())
-    # Default to "Banks" if present
-    default_sector = ["Banks"] if "Banks" in sector_values else sector_values
+    
     chosen_sectors = st.sidebar.multiselect(
-        "Sectors", options=sector_values, default=default_sector,
+        "Sectors", options=sector_values, default=[],
         help=f"Filtering by '{SECTOR_COL}' column",
     )
+
+    # If nothing is selected, use all sectors by default
+    if not chosen_sectors:
+        chosen_sectors = sector_values
 else:
     st.warning(f"Column '{SECTOR_COL}' not found. Sector filter disabled.")
     chosen_sectors = None
