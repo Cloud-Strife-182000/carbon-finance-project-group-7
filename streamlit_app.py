@@ -30,6 +30,25 @@ else:
     st.stop()
 
 # ---------------------------------------------------------
+# Remove duplicate entries for the same company in a year
+# ---------------------------------------------------------
+if "Company Name" in df.columns and "Last Updated On" in df.columns:
+    # Convert to datetime safely
+    df["Last Updated On"] = pd.to_datetime(df["Last Updated On"], errors="coerce")
+
+    # Extract year from the date
+    df["Year_Updated"] = df["Last Updated On"].dt.year
+
+    # Sort so that the latest update appears first
+    df = df.sort_values("Last Updated On", ascending=False)
+
+    # Drop duplicate company-year pairs, keeping only the latest
+    df = df.drop_duplicates(subset=["Company Name", "Year_Updated"], keep="first")
+
+    # Clean up temporary column
+    df = df.drop(columns=["Year_Updated"])
+
+# ---------------------------------------------------------
 # YEAR PARSING
 # ---------------------------------------------------------
 if "Last Updated On" not in df.columns:
