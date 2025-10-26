@@ -15,7 +15,7 @@ from PIL import Image, ImageOps, ImageDraw
 # ---------------------------------------------------------
 st.set_page_config(page_title="Carbon Finance Term Project | Group-7", layout="wide")
 st.title("Carbon Finance Term Project | Group-7")
-st.caption("ESG Disclosures & Carbon Finance — Score & Rating Distributions (v1.3.2, WebP)")
+st.caption("ESG Disclosures & Carbon Finance — Score & Rating Distributions (v1.3.3, WebP)")
 
 BASE_DIR = Path(__file__).parent
 DATA_PATH = BASE_DIR / "data" / "esg_risk_data.csv"
@@ -30,65 +30,64 @@ else:
     st.stop()
 
 # ---------------------------------------------------------
-# PARSE YEAR FROM 'Last Updated On'
+# YEAR PARSING (from 'Last Updated On')
 # ---------------------------------------------------------
 if "Last Updated On" not in df.columns:
     st.error("Column 'Last Updated On' not found in dataset.")
     st.stop()
 
-# Convert to datetime safely
 df["Last Updated On"] = pd.to_datetime(df["Last Updated On"], errors="coerce")
 df["Year"] = df["Last Updated On"].dt.year
 
 available_years = sorted(df["Year"].dropna().unique(), reverse=True)
-valid_years = [y for y in available_years if y in [2024, 2025]]
-
+valid_years = [y for y in available_years if y in [2025, 2024]]
 if not valid_years:
     valid_years = available_years[-2:] if len(available_years) > 0 else []
 
 # ---------------------------------------------------------
-# FIXED SCORE COLUMNS
+# FIXED SCORE COLUMNS (ESG / E / S / G)
 # ---------------------------------------------------------
 FIXED_SCORE_COLS = ["ESG Score", "Environment Score", "Social Score", "Governance Score"]
 available_scores = [c for c in FIXED_SCORE_COLS if c in df.columns]
-
 if not available_scores:
     st.error("None of the fixed score columns were found: 'ESG Score', 'Environment Score', 'Social Score', 'Governance Score'.")
     st.stop()
 
 # ---------------------------------------------------------
-# FILTERS SECTION
+# FILTERS (SIDEBAR)
 # ---------------------------------------------------------
 st.sidebar.header("Filters")
 
-# Year filter (only 2025, 2024)
-year_choice = st.sidebar.selectbox("Select Year", valid_years, index=0 if 2025 in valid_years else 0)
+# Year selector (2025 / 2024 preferred)
+year_choice = st.sidebar.selectbox(
+    "Select Year",
+    options=valid_years,
+    index=0 if 2025 in valid_years else 0
+)
 df = df[df["Year"] == year_choice]
 
-# Sector filter
+# Sector filter (explicit column)
 SECTOR_COL = "Sector Classification"
 if SECTOR_COL in df.columns:
     sector_values = sorted(df[SECTOR_COL].astype("string").fillna("Unknown").unique().tolist())
     chosen_sectors = st.sidebar.multiselect(
-        "Sectors",
-        options=sector_values,
-        default=sector_values,
+        "Sectors", options=sector_values, default=sector_values,
         help=f"Filtering by '{SECTOR_COL}' column",
     )
 else:
     st.warning(f"Column '{SECTOR_COL}' not found. Sector filter disabled.")
     chosen_sectors = None
 
-# Score metric
+# Score metric selector (fixed list)
 st.subheader("Choose Score Metric")
 score_col = st.selectbox("Score column to analyze", available_scores)
 
-# Numeric enforcement
+# Numeric enforcement for selected score
 df = df.copy()
 df[score_col] = pd.to_numeric(df[score_col], errors="coerce")
 df = df.dropna(subset=[score_col])
 
-# Minimum score filter
+# Minimum score slider
 score_min = float(df[score_col].min())
 score_max = float(df[score_col].max())
 lo = math.floor(score_min / 5.0) * 5
@@ -109,7 +108,8 @@ if len(df_f) == 0:
     st.stop()
 
 # ---------------------------------------------------------
-# RATING BANDS
+# RATING BANDS (derived from selected score)
+# AAA (>=85), AA (75–84), A (65–74), BBB (55–64), BB (<55)
 # ---------------------------------------------------------
 def map_rating(score):
     if pd.isna(score):
@@ -143,22 +143,28 @@ with k3:
     st.metric("Median Score", f"{med_score:.1f}")
 
 st.markdown(f"**Year Selected:** {year_choice}")
-
 st.divider()
 
 # ---------------------------------------------------------
-# CHARTS
+# CHARTS — GREEN THEME (Accurate Label Position + Gradient Bars)
 # ---------------------------------------------------------
 left, right = st.columns(2)
 
+# --- Histogram with gradient shading ---
 with left:
     st.subheader(f"{score_col} Distribution (Histogram)")
+
     score_hist = (
         alt.Chart(df_f)
         .mark_bar()
         .encode(
             x=alt.X(f"{score_col}:Q", bin=alt.Bin(maxbins=20), title=score_col),
             y=alt.Y("count():Q", title="Count"),
+            color=alt.Color(
+                "count():Q",
+                scale=alt.Scale(scheme="greens"),  # green gradient
+                legend=None,
+            ),
             tooltip=[
                 alt.Tooltip(f"{score_col}:Q", title="Score (binned)", bin=alt.Bin(maxbins=20)),
                 alt.Tooltip("count():Q", title="Count"),
@@ -166,10 +172,12 @@ with left:
         )
         .properties(height=380)
     )
-    st.altair_chart(score_hist, use_container_width=True)
+    st.altair_chart(score_hist.configure_view(strokeWidth=0), use_container_width=True)
 
+# --- Pie chart with improved label alignment ---
 with right:
     st.subheader("Rating Distribution (Derived from Selected Score)")
+
     rating_counts = (
         df_f["ESG_Rating_Band"]
         .astype("string")
@@ -178,21 +186,54 @@ with right:
         .rename_axis("rating")
         .reset_index(name="n")
     )
+
     order = ["AAA", "AA", "A", "BBB", "BB", "Unknown"]
-    rating_counts["rating"] = pd.Categorical(rating_counts["rating"], categories=order, ordered=True)
+    present_order = [r for r in order if r in rating_counts["rating"].unique()]
+    rating_counts["rating"] = pd.Categorical(
+        rating_counts["rating"], categories=present_order, ordered=True
+    )
     rating_counts = rating_counts.sort_values("rating")
 
+    total_n = rating_counts["n"].sum()
+    rating_counts["pct"] = (rating_counts["n"] / total_n * 100).round(1)
+    rating_counts["label"] = rating_counts["pct"].astype(int).astype(str) + "%"
+
+    # Green palette (dark → light)
+    green_palette = ['#00441b', '#006d2c', '#238b45', '#41ae76', '#66c2a4', '#99d8c9']
+
+    # Pie chart
     pie = (
         alt.Chart(rating_counts)
-        .mark_arc()
+        .mark_arc(outerRadius=150, innerRadius=60, cornerRadius=5)
         .encode(
             theta=alt.Theta("n:Q", title=""),
-            color=alt.Color("rating:N", title="Rating", sort=order),
-            tooltip=[alt.Tooltip("rating:N"), alt.Tooltip("n:Q", title="Count")],
+            color=alt.Color(
+                "rating:N",
+                title="Rating",
+                sort=present_order,
+                scale=alt.Scale(domain=present_order, range=green_palette[:len(present_order)]),
+            ),
+            tooltip=[
+                alt.Tooltip("rating:N", title="Rating"),
+                alt.Tooltip("n:Q", title="Count"),
+                alt.Tooltip("pct:Q", title="Share (%)"),
+            ],
         )
-        .properties(height=380)
     )
-    st.altair_chart(pie, use_container_width=True)
+
+    # Improved label placement using position="inside" ensures text sits on slice
+    labels = (
+        alt.Chart(rating_counts)
+        .mark_text(size=13, color="white", fontWeight="bold")
+        .encode(
+            theta=alt.Theta("n:Q"),
+            text="label:N",
+            radius=alt.value(100),  # closer to outer arc but still inside slice
+        )
+    )
+
+    layered_pie = (pie + labels).configure_view(strokeWidth=0)
+    st.altair_chart(layered_pie, use_container_width=True)
 
 st.divider()
 
