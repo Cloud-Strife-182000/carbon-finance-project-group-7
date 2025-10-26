@@ -212,7 +212,6 @@ with tab_overview:
 
             # Canonical order: sort by count desc (or keep your preferred order)
             rating_counts = rating_counts.sort_values("n", ascending=False).reset_index(drop=True)
-            rating_order = rating_counts["rating"].tolist()
             rating_counts["sort_key"] = rating_counts.index.astype(int)
 
             # Shares + labels
@@ -233,9 +232,18 @@ with tab_overview:
             outside = rating_counts[rating_counts["pct"] <  MIN_LABEL_PCT]
 
             # Base + pie (unchanged)
-            green_palette = ['#00441b', '#006d2c', '#238b45', '#41ae76', '#66c2a4', '#99d8c9', '#ccece6']
-            palette = green_palette[: len(rating_counts)]
             base = alt.Chart(rating_counts).properties(width=400, height=400)
+
+            # Define fixed color mapping for 4 ESG categories (green gradient)
+            category_palette = {
+                "Inadequate": "#b2e0ac",  # lightest green
+                "Adequate": "#40a65a",    # soft mid-green
+                "Strong": "#218a44",      # medium-dark green
+                "Excellent": "#036429",   # deepest green
+            }
+
+            # Ensure categories in fixed order
+            category_order = ["Inadequate", "Adequate", "Strong", "Excellent"]
 
             pie = (
                 base
@@ -246,7 +254,7 @@ with tab_overview:
                     color=alt.Color(
                         "rating:N",
                         title="Rating",
-                        scale=alt.Scale(domain=rating_order, range=palette),
+                        scale=alt.Scale(domain=category_order, range=[category_palette[c] for c in category_order if c in rating_counts["rating"].tolist()],),
                         sort=None,
                     ),
                     tooltip=[
