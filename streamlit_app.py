@@ -1,4 +1,4 @@
-# Carbon Finance Dashboard v1.3.5
+# Carbon Finance Dashboard v1.3.6
 # Filters (Year, Sector, Score Metric in sidebar) + KPIs + Tabs (ESG Overview | Team)
 # Green-themed charts + smart pie labels; Title: “Carbon Finance Term Project | Group-7”
 
@@ -15,7 +15,7 @@ from PIL import Image, ImageOps, ImageDraw
 # ---------------------------------------------------------
 st.set_page_config(page_title="Carbon Finance Term Project | Group-7", layout="wide")
 st.title("Carbon Finance Term Project | Group-7")
-st.caption("ESG Disclosures & Carbon Finance — Score & Rating Distributions (v1.3.5)")
+st.caption("ESG Disclosures & Carbon Finance — Score & Rating Distributions (v1.3.6)")
 
 BASE_DIR = Path(__file__).parent
 DATA_PATH = BASE_DIR / "data" / "esg_risk_data.csv"
@@ -65,7 +65,7 @@ year_choice = st.sidebar.selectbox(
 )
 df = df[df["Year"] == year_choice].copy()
 
-# Score metric selector (moved to sidebar)
+# Score metric selector (sidebar)
 default_idx = available_scores.index("ESG Score") if "ESG Score" in available_scores else 0
 score_col = st.sidebar.selectbox("Score Metric", available_scores, index=default_idx)
 
@@ -107,6 +107,7 @@ if len(df_f) == 0:
 
 # ---------------------------------------------------------
 # RATING BANDS (derived from selected score)
+# AAA (>=85), AA (75–84), A (65–74), BBB (55–64), BB (<55)
 # ---------------------------------------------------------
 def map_rating(score):
     if pd.isna(score):
@@ -148,118 +149,118 @@ with tab_overview:
     st.divider()
 
     # ---------------- CHARTS — GREEN THEME ----------------
-left, right = st.columns(2)
+    left, right = st.columns(2)
 
-# Histogram with green gradient
-with left:
-    st.subheader(f"{score_col} Distribution (Histogram)")
-    score_hist = (
-        alt.Chart(df_f)
-        .mark_bar()
-        .encode(
-            x=alt.X(f"{score_col}:Q", bin=alt.Bin(maxbins=20), title=score_col),
-            y=alt.Y("count():Q", title="Count"),
-            color=alt.Color("count():Q", scale=alt.Scale(scheme="greens"), legend=None),
-            tooltip=[
-                alt.Tooltip(f"{score_col}:Q", title="Score (binned)", bin=alt.Bin(maxbins=20)),
-                alt.Tooltip("count():Q", title="Count"),
-            ],
+    # Histogram with green gradient
+    with left:
+        st.subheader(f"{score_col} Distribution (Histogram)")
+        score_hist = (
+            alt.Chart(df_f)
+            .mark_bar()
+            .encode(
+                x=alt.X(f"{score_col}:Q", bin=alt.Bin(maxbins=20), title=score_col),
+                y=alt.Y("count():Q", title="Count"),
+                color=alt.Color("count():Q", scale=alt.Scale(scheme="greens"), legend=None),
+                tooltip=[
+                    alt.Tooltip(f"{score_col}:Q", title="Score (binned)", bin=alt.Bin(maxbins=20)),
+                    alt.Tooltip("count():Q", title="Count"),
+                ],
+            )
+            .properties(height=380)
+            .configure_view(strokeWidth=0)
         )
-        .properties(height=380)
-        .configure_view(strokeWidth=0)
-    )
-    st.altair_chart(score_hist, use_container_width=True)
+        st.altair_chart(score_hist, use_container_width=True)
 
-# Donut with smart labels (inside for big slices, outside for small)
-with right:
-    # Dynamic title from selected score metric
-    title_prefix = {
-        "ESG Score": "ESG",
-        "Environment Score": "Environment",
-        "Social Score": "Social",
-        "Governance Score": "Governance",
-    }.get(score_col, "ESG")
-    st.subheader(f"{title_prefix} Rating Distribution")
+    # Donut with smart labels (inside for big slices, outside for small)
+    with right:
+        # Dynamic title from selected score metric
+        title_prefix = {
+            "ESG Score": "ESG",
+            "Environment Score": "Environment",
+            "Social Score": "Social",
+            "Governance Score": "Governance",
+        }.get(score_col, "ESG")
+        st.subheader(f"{title_prefix} Rating Distribution")
 
-    # Build counts (explicit order + numeric key to pin label geometry)
-    rating_counts = (
-        df_f["ESG_Rating_Band"]
-        .astype("string").fillna("Unknown")
-        .value_counts(dropna=False)
-        .rename_axis("rating").reset_index(name="n")
-    )
-
-    desired_order = ["AAA", "AA", "A", "BBB", "BB", "Unknown"]
-    order_index = {lab: i for i, lab in enumerate(desired_order)}
-    rating_counts["sort_key"] = rating_counts["rating"].map(order_index).fillna(999).astype(int)
-    rating_counts = rating_counts.sort_values("sort_key").reset_index(drop=True)
-
-    # Percent and labels
-    total_n = rating_counts["n"].sum()
-    rating_counts["pct"] = (rating_counts["n"] / total_n * 100).round(1)
-    rating_counts["label"] = rating_counts["pct"].astype(int).astype(str) + "%"
-
-    # Green palette (dark → light), slice to present categories
-    green_palette = ['#00441b', '#006d2c', '#238b45', '#41ae76', '#66c2a4', '#99d8c9']
-    palette = green_palette[: len(rating_counts)]
-
-    # Use a single base chart object so both layers inherit identical data immediately
-    base = alt.Chart(rating_counts).properties(height=400)
-
-    # Donut wedges
-    pie = (
-        base
-        .mark_arc(outerRadius=150, innerRadius=60, cornerRadius=5)
-        .encode(
-            theta=alt.Theta("n:Q", stack=True, title=""),
-            order=alt.Order("sort_key:Q", sort="ascending"),
-            color=alt.Color(
-                "rating:N",
-                title="Rating",
-                scale=alt.Scale(domain=rating_counts["rating"].tolist(), range=palette),
-                sort=None,
-            ),
-            tooltip=[
-                alt.Tooltip("rating:N", title="Rating"),
-                alt.Tooltip("n:Q", title="Count"),
-                alt.Tooltip("pct:Q", title="Share (%)"),
-            ],
+        # Build counts (explicit order + numeric key to pin label geometry)
+        rating_counts = (
+            df_f["ESG_Rating_Band"]
+            .astype("string").fillna("Unknown")
+            .value_counts(dropna=False)
+            .rename_axis("rating").reset_index(name="n")
         )
-    )
 
-    # Label logic: big slices inside (white), small slices outside (black)
-    MIN_LABEL_PCT = 8  # threshold to "call out" tiny wedges
-    inside = rating_counts[rating_counts["pct"] >= MIN_LABEL_PCT]
-    outside = rating_counts[rating_counts["pct"] < MIN_LABEL_PCT]
+        desired_order = ["AAA", "AA", "A", "BBB", "BB", "Unknown"]
+        order_index = {lab: i for i, lab in enumerate(desired_order)}
+        rating_counts["sort_key"] = rating_counts["rating"].map(order_index).fillna(999).astype(int)
+        rating_counts = rating_counts.sort_values("sort_key").reset_index(drop=True)
 
-    labels_inside = (
-        alt.Chart(inside)
-        .mark_text(size=13, color="white", fontWeight="bold")
-        .encode(
-            theta=alt.Theta("n:Q", stack=True),
-            order=alt.Order("sort_key:Q", sort="ascending"),
-            text="label:N",
-            radius=alt.value(112),   # inside wedge
+        # Percent and labels
+        total_n = rating_counts["n"].sum()
+        rating_counts["pct"] = (rating_counts["n"] / total_n * 100).round(1)
+        rating_counts["label"] = rating_counts["pct"].astype(int).astype(str) + "%"
+
+        # Green palette (dark → light), slice to present categories
+        green_palette = ['#00441b', '#006d2c', '#238b45', '#41ae76', '#66c2a4', '#99d8c9']
+        palette = green_palette[: len(rating_counts)]
+
+        # Shared base to avoid “render on hover”
+        base = alt.Chart(rating_counts).properties(height=400)
+
+        # Donut wedges
+        pie = (
+            base
+            .mark_arc(outerRadius=150, innerRadius=60, cornerRadius=5)
+            .encode(
+                theta=alt.Theta("n:Q", stack=True, title=""),
+                order=alt.Order("sort_key:Q", sort="ascending"),
+                color=alt.Color(
+                    "rating:N",
+                    title="Rating",
+                    scale=alt.Scale(domain=rating_counts["rating"].tolist(), range=palette),
+                    sort=None,
+                ),
+                tooltip=[
+                    alt.Tooltip("rating:N", title="Rating"),
+                    alt.Tooltip("n:Q", title="Count"),
+                    alt.Tooltip("pct:Q", title="Share (%)"),
+                ],
+            )
         )
-    )
 
-    labels_outside = (
-        alt.Chart(outside)
-        .mark_text(size=12, color="black", fontWeight="bold")  # call-out text black
-        .encode(
-            theta=alt.Theta("n:Q", stack=True),
-            order=alt.Order("sort_key:Q", sort="ascending"),
-            text="label:N",
-            radius=alt.value(175),   # just outside wedge
+        # Label logic: big slices inside (white), small slices outside (black)
+        MIN_LABEL_PCT = 8  # threshold to "call out" tiny wedges
+        inside = rating_counts[rating_counts["pct"] >= MIN_LABEL_PCT]
+        outside = rating_counts[rating_counts["pct"] < MIN_LABEL_PCT]
+
+        labels_inside = (
+            alt.Chart(inside)
+            .mark_text(size=13, color="white", fontWeight="bold")
+            .encode(
+                theta=alt.Theta("n:Q", stack=True),
+                order=alt.Order("sort_key:Q", sort="ascending"),
+                text="label:N",
+                radius=alt.value(112),   # inside wedge
+            )
         )
-    )
 
-    layered_pie = (pie + labels_inside + labels_outside).configure_view(strokeWidth=0)
-    st.altair_chart(layered_pie, use_container_width=True)
+        labels_outside = (
+            alt.Chart(outside)
+            .mark_text(size=12, color="black", fontWeight="bold")  # call-out text black
+            .encode(
+                theta=alt.Theta("n:Q", stack=True),
+                order=alt.Order("sort_key:Q", sort="ascending"),
+                text="label:N",
+                radius=alt.value(175),   # just outside wedge
+            )
+        )
 
-st.divider()
-with st.expander("Preview Filtered Data (first 100 rows)"):
-    st.dataframe(df_f.head(100), use_container_width=True, hide_index=True)
+        layered_pie = (pie + labels_inside + labels_outside).configure_view(strokeWidth=0)
+        st.altair_chart(layered_pie, use_container_width=True)
+
+    st.divider()
+    with st.expander("Preview Filtered Data (first 100 rows)"):
+        st.dataframe(df_f.head(100), use_container_width=True, hide_index=True)
 
 with tab_team:
     # ---------------------------------------------------------
