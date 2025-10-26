@@ -272,6 +272,44 @@ with tab_overview:
 
         st.altair_chart(final_chart, use_container_width=True)
 
+        # ---------------- TOP PERFORMERS TABLE ----------------
+    metric_label = score_col.replace(" Score", "")
+    table_title = f"Top 10 {metric_label} Performers in Selected Sectors ({int(year_choice)})"
+
+    # Use the 'Company Name' column directly
+    name_col = "Company Name"
+
+    # Make sure it exists
+    if name_col not in df_f.columns:
+        st.warning("Column 'Company Name' not found in dataset.")
+    else:
+        # Choose display columns
+        display_cols = [name_col, score_col, "ESG_Rating_Band"]
+        col_renames = {
+            name_col: "Company Name",
+            score_col: f"{metric_label} Score",
+            "ESG_Rating_Band": "Rating",
+        }
+
+        # Add Sector column if available
+        if SECTOR_COL in df_f.columns:
+            display_cols.insert(1, SECTOR_COL)
+            col_renames[SECTOR_COL] = "Sector"
+
+        # Build Top 10 table
+        top10 = (
+            df_f.sort_values(score_col, ascending=False)
+            [display_cols]
+            .head(10)
+            .rename(columns=col_renames)
+        )
+        top10[f"{metric_label} Score"] = top10[f"{metric_label} Score"].round(1)
+
+        # Render table
+        st.markdown(f"#### {table_title}")
+        st.dataframe(top10, use_container_width=True, hide_index=True)
+
+
     st.divider()
     with st.expander("Preview Filtered Data (first 100 rows)"):
         st.dataframe(df_f.head(100), use_container_width=True, hide_index=True)
