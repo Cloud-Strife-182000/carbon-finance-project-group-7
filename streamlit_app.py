@@ -158,12 +158,12 @@ st.markdown(
 tab_overview, tab_team = st.tabs(["📊 ESG Overview", "👥 Team"])
 
 with tab_overview:
-    st.divider()
+    st.markdown("## ESG Performance Dashboard")
     left, right = st.columns(2)
 
     # ---------------- HISTOGRAM ----------------
     with left:
-        st.subheader(f"{score_col} Distribution (Histogram)")
+        st.markdown(f"##### {score_col} Distribution (Histogram)")
         score_hist = (
             alt.Chart(df_f)
             .mark_bar()
@@ -190,7 +190,7 @@ with tab_overview:
             "Governance Score": "Governance",
         }.get(score_col, "ESG")
 
-        st.subheader(f"{title_prefix} Rating Distribution")
+        st.markdown(f"##### {title_prefix} Rating Distribution")
 
         rating_counts = (
             df_f["ESG_Rating_Band"]
