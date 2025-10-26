@@ -146,11 +146,11 @@ st.markdown(f"**Year Selected:** {year_choice}")
 st.divider()
 
 # ---------------------------------------------------------
-# CHARTS — GREEN THEME (Accurate Label Position + Gradient Bars)
+# CHARTS — GREEN THEME (fixed label alignment + gradient bars)
 # ---------------------------------------------------------
 left, right = st.columns(2)
 
-# --- Histogram with gradient shading ---
+# --- Histogram with green gradient ---
 with left:
     st.subheader(f"{score_col} Distribution (Histogram)")
 
@@ -162,7 +162,7 @@ with left:
             y=alt.Y("count():Q", title="Count"),
             color=alt.Color(
                 "count():Q",
-                scale=alt.Scale(scheme="greens"),  # green gradient
+                scale=alt.Scale(scheme="greens"),
                 legend=None,
             ),
             tooltip=[
@@ -171,13 +171,15 @@ with left:
             ],
         )
         .properties(height=380)
+        .configure_view(strokeWidth=0)
     )
-    st.altair_chart(score_hist.configure_view(strokeWidth=0), use_container_width=True)
+    st.altair_chart(score_hist, use_container_width=True)
 
-# --- Pie chart with improved label alignment ---
+# --- Donut pie with perfectly aligned labels ---
 with right:
     st.subheader("Rating Distribution (Derived from Selected Score)")
 
+    # Aggregate counts
     rating_counts = (
         df_f["ESG_Rating_Band"]
         .astype("string")
@@ -187,31 +189,35 @@ with right:
         .reset_index(name="n")
     )
 
-    order = ["AAA", "AA", "A", "BBB", "BB", "Unknown"]
-    present_order = [r for r in order if r in rating_counts["rating"].unique()]
-    rating_counts["rating"] = pd.Categorical(
-        rating_counts["rating"], categories=present_order, ordered=True
-    )
-    rating_counts = rating_counts.sort_values("rating")
+    # Explicit order and numeric sort key (this is the key to alignment)
+    desired_order = ["AAA", "AA", "A", "BBB", "BB", "Unknown"]
+    order_index = {lab: i for i, lab in enumerate(desired_order)}
+    rating_counts["sort_key"] = rating_counts["rating"].map(order_index).fillna(999).astype(int)
 
+    # Sort once and keep as-is for both layers
+    rating_counts = rating_counts.sort_values("sort_key").reset_index(drop=True)
+
+    # Percent + label text
     total_n = rating_counts["n"].sum()
     rating_counts["pct"] = (rating_counts["n"] / total_n * 100).round(1)
     rating_counts["label"] = rating_counts["pct"].astype(int).astype(str) + "%"
 
-    # Green palette (dark → light)
+    # Green palette (dark → light). We’ll slice to the number of categories present.
     green_palette = ['#00441b', '#006d2c', '#238b45', '#41ae76', '#66c2a4', '#99d8c9']
+    palette = green_palette[: len(rating_counts)]
 
-    # Pie chart
+    # Donut wedges — use identical theta + order in BOTH layers
     pie = (
         alt.Chart(rating_counts)
         .mark_arc(outerRadius=150, innerRadius=60, cornerRadius=5)
         .encode(
-            theta=alt.Theta("n:Q", title=""),
+            theta=alt.Theta("n:Q", stack=True, title=""),
+            order=alt.Order("sort_key:Q", sort="ascending"),
             color=alt.Color(
                 "rating:N",
                 title="Rating",
-                sort=present_order,
-                scale=alt.Scale(domain=present_order, range=green_palette[:len(present_order)]),
+                scale=alt.Scale(domain=rating_counts["rating"].tolist(), range=palette),
+                sort=None,  # domain already fixes the order
             ),
             tooltip=[
                 alt.Tooltip("rating:N", title="Rating"),
@@ -221,14 +227,15 @@ with right:
         )
     )
 
-    # Improved label placement using position="inside" ensures text sits on slice
+    # Labels — identical theta + order so text sits on the correct slice
     labels = (
         alt.Chart(rating_counts)
         .mark_text(size=13, color="white", fontWeight="bold")
         .encode(
-            theta=alt.Theta("n:Q"),
+            theta=alt.Theta("n:Q", stack=True),
+            order=alt.Order("sort_key:Q", sort="ascending"),
             text="label:N",
-            radius=alt.value(100),  # closer to outer arc but still inside slice
+            radius=alt.value(112),  # inside the wedge; tweak 105–125 to taste
         )
     )
 
