@@ -807,8 +807,8 @@ with tab_bonds:
 
     st.altair_chart(chart, use_container_width=True)
 
-        # ---------------------------------------------------------
-    # GREEN BONDS VS TOTAL DEBT FINANCING COMPARISON
+    # ---------------------------------------------------------
+    # GREEN BONDS VS TOTAL DEBT FINANCING COMPARISON (COMPANY DONUTS)
     # ---------------------------------------------------------
     st.markdown("##### Green Bonds vs Total Debt Financing")
 
@@ -849,99 +849,111 @@ with tab_bonds:
         value_name="Amount (INR Cr)"
     )
 
-    # Horizontal grouped bars: grey = total debt, green = green bonds
-    chart_debt = (
-        alt.Chart(comp_melt)
-        .mark_bar()
+    # Prepare wide -> long for donut slices
+    donut_df = comparison[["Company", "Total Debt", "Green Bond Amount (INR Cr)", "% Green Bond Share"]].copy()
+    donut_df["Other Debt"] = (donut_df["Total Debt"] - donut_df["Green Bond Amount (INR Cr)"]).clip(lower=0)
+    donut_long = donut_df.melt(
+        id_vars=["Company", "% Green Bond Share"],
+        value_vars=["Green Bond Amount (INR Cr)", "Other Debt"],
+        var_name="Slice",
+        value_name="Amount (INR Cr)"
+    )
+
+    # Order companies by green share descending
+    company_order = donut_df.sort_values("% Green Bond Share", ascending=False)["Company"].tolist()
+
+    # Donut chart per company (faceted)
+    donut = (
+        alt.Chart(donut_long)
+        .mark_arc(outerRadius=60, innerRadius=36)
         .encode(
-            y=alt.Y("Company:N", sort="-x", title="Company"),
-            x=alt.X("Amount (INR Cr):Q", title="Amount (INR Crores)"),
+            theta=alt.Theta("Amount (INR Cr):Q", stack=True),
             color=alt.Color(
-                "Financing Type:N",
-                title="Type",
+                "Slice:N",
                 scale=alt.Scale(
-                    domain=["Total Debt", "Green Bond Amount (INR Cr)"],
-                    range=["#d9d9d9", "#218a44"]
+                    domain=["Green Bond Amount (INR Cr)", "Other Debt"],
+                    range=["#218a44", "#d9d9d9"]
                 ),
-                legend=alt.Legend(
-                    title=None,
-                    labelExpr="datum.label == 'Total Debt' ? 'Total Debt (2025)' : datum.label"
-                )
+                legend=alt.Legend(title=None, orient="right")
             ),
             tooltip=[
                 alt.Tooltip("Company:N", title="Company"),
-                alt.Tooltip("Financing Type:N", title="Type"),
+                alt.Tooltip("Slice:N", title="Type"),
                 alt.Tooltip("Amount (INR Cr):Q", title="Amount (INR Cr)", format=","),
-                alt.Tooltip("% Green Bond Share:Q", title="% of Debt from Green Bonds", format=".2f"),
-            ],
+                alt.Tooltip("% Green Bond Share:Q", title="% Green Share", format=".2f"),
+            ]
         )
-        .properties(height=max(300, 28 * comparison["Company"].nunique()))
+        .properties(width=140, height=140)
+        .facet(
+            facet=alt.Facet("Company:N", sort=company_order, title=None),
+            columns=3
+        )
         .configure_view(strokeWidth=0)
     )
 
-    st.altair_chart(chart_debt, use_container_width=True)
+    st.altair_chart(donut, use_container_width=True)
 
-        # ---------------------------------------------------------
-    # COMPANY-LEVEL VIEW: GREEN BOND SHARE BY ESG CATEGORY
+
     # ---------------------------------------------------------
-    st.markdown("##### Company-wise Green Bond Share by ESG Strength")
+    # ESG vs GREEN-DEBT MIX — BUBBLE SCATTER (fixed layering)
+    # ---------------------------------------------------------
+    st.markdown("##### ESG vs Green Bond Share")
 
-    # Merge ESG scores into comparison data
+    # Merge ESG into the debt comparison (if not already merged above)
     esg_merge = esg_latest[["Company Name", "ESG Score", "Company_clean"]].copy()
-    comp_esg_detail = pd.merge(
-        comparison,
-        esg_merge,
-        left_on="Issuer_clean" if "Issuer_clean" in comparison.columns else "Company_clean",
-        right_on="Company_clean",
-        how="left"
+    comp_esg_detail = comparison.merge(
+        esg_merge, on="Company_clean", how="left"
     )
 
-    # ESG Category Classification
-    def classify_esg(score):
-        if pd.isna(score):
-            return "Unknown"
-        elif score >= 60:
-            return "Strong ESG Firms"
-        elif score >= 40:
-            return "Moderate ESG Firms"
-        else:
-            return "Weak ESG Firms"
+    # Classify ESG category
+    def _esg_cat(s):
+        if pd.isna(s): return "Unknown"
+        if s >= 60:    return "Strong ESG Firms"
+        if s >= 40:    return "Moderate ESG Firms"
+        return "Weak ESG Firms"
 
-    comp_esg_detail["ESG Category"] = comp_esg_detail["ESG Score"].apply(classify_esg)
+    comp_esg_detail["ESG Category"] = comp_esg_detail["ESG Score"].apply(_esg_cat)
 
-    # Sort companies by share
-    comp_esg_detail = comp_esg_detail.sort_values("% Green Bond Share", ascending=False)
+    selector = alt.selection_point(fields=["ESG Category"], bind="legend")
 
-    # Horizontal bars by company, colored by ESG category
-    chart_company_esg = (
+    bubble = (
         alt.Chart(comp_esg_detail)
-        .mark_bar()
+        .mark_circle(opacity=0.9)
         .encode(
-            y=alt.Y("Company:N", sort="-x", title="Company"),
-            x=alt.X("% Green Bond Share:Q", title="% of Total Debt Financed via Green Bonds"),
+            x=alt.X("% Green Bond Share:Q", title="% of Debt via Green Bonds", scale=alt.Scale(zero=True)),
+            y=alt.Y("ESG Score:Q", title="ESG Score"),
+            size=alt.Size("Total Debt:Q", title="Total Debt (INR Cr)"),
             color=alt.Color(
                 "ESG Category:N",
-                title="ESG Category",
                 scale=alt.Scale(
                     domain=["Strong ESG Firms", "Moderate ESG Firms", "Weak ESG Firms", "Unknown"],
                     range=["#036429", "#40a65a", "#b2e0ac", "#cccccc"]
                 ),
+                legend=alt.Legend(title="ESG Category")
             ),
             tooltip=[
                 alt.Tooltip("Company:N", title="Company"),
                 alt.Tooltip("ESG Score:Q", title="ESG Score"),
-                alt.Tooltip("ESG Category:N", title="ESG Category"),
-                alt.Tooltip("Total Debt:Q", title="Total Debt (INR Cr)", format=","),
+                alt.Tooltip("% Green Bond Share:Q", title="% Green Share", format=".2f"),
                 alt.Tooltip("Green Bond Amount (INR Cr):Q", title="Green Bonds (INR Cr)", format=","),
-                alt.Tooltip("% Green Bond Share:Q", title="% Share", format=".2f"),
+                alt.Tooltip("Total Debt:Q", title="Total Debt (INR Cr)", format=","),
             ],
         )
-        .properties(height=max(400, 28 * comp_esg_detail["Company"].nunique()))
-        .configure_view(strokeWidth=0)
+        .add_params(selector)
+        .transform_filter(selector)
+        .properties(height=420)
     )
 
-    st.altair_chart(chart_company_esg, use_container_width=True)
+    # Reference lines (medians)
+    ref_x = alt.Chart(comp_esg_detail).mark_rule(strokeDash=[4,4], strokeOpacity=0.5).encode(
+        x="median(% Green Bond Share):Q"
+    )
+    ref_y = alt.Chart(comp_esg_detail).mark_rule(strokeDash=[4,4], strokeOpacity=0.5).encode(
+        y="median(ESG Score):Q"
+    )
 
+    bubble_layered = alt.layer(bubble, ref_x, ref_y).configure_view(strokeWidth=0)
+    st.altair_chart(bubble_layered, use_container_width=True)
 
 # ---------------------------------------------------------
 # TEAM TAB
