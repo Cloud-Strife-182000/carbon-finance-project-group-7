@@ -536,45 +536,48 @@ with tab_sector:
 # GREEN BONDS TAB
 # ---------------------------------------------------------
 with tab_bonds:
-    
     st.markdown("## Green Bonds Analysis")
 
     st.markdown("##### Green Bonds Issuance By Year")
 
+    import altair as alt
+    import pandas as pd
+
+    # File paths
     gb_path = BASE_DIR / "data" / "green_bonds_data.csv"
+    esg_path = BASE_DIR / "data" / "esg_risk_data.csv"
 
-    # Load dataset
+    # Load datasets
     gb = pd.read_csv(gb_path)
+    esg = pd.read_csv(esg_path)
 
-    required_cols = {
+    required_cols_gb = {
         "Sr. No.", "Issuer", "Issuance Date", "Date of Maturity",
         "Amount Raised", "Coupon (%)", "Tenure", "ISIN"
     }
-    missing = required_cols.difference(gb.columns)
-    if missing:
-        st.error(f"Missing columns in green_bonds_data.csv: {', '.join(sorted(missing))}")
+    required_cols_esg = {"Company Name", "ESG Score"}
+
+    if not required_cols_gb.issubset(gb.columns):
+        st.error("The Green Bonds CSV is missing required columns.")
+        st.stop()
+    if not required_cols_esg.issubset(esg.columns):
+        st.error("The ESG data CSV is missing required columns.")
         st.stop()
 
-    # Parse dates and derive Year
+    # Parse and clean
     gb["Issuance Date"] = pd.to_datetime(
         gb["Issuance Date"], errors="coerce", dayfirst=True, infer_datetime_format=True
     )
     gb["Year"] = gb["Issuance Date"].dt.year
-
-    # Clean and convert Amount Raised
-    amt = gb["Amount Raised"].astype(str).str.replace(r"[^\d.\-]", "", regex=True)
-    gb["Amount Raised"] = pd.to_numeric(amt, errors="coerce")
-
-    # Drop invalid rows
+    gb["Amount Raised"] = pd.to_numeric(
+        gb["Amount Raised"].astype(str).str.replace(r"[^\d.\-]", "", regex=True),
+        errors="coerce"
+    )
     gb = gb.dropna(subset=["Year", "Amount Raised"])
     gb["Year"] = gb["Year"].astype(int)
 
-    # Filter by year range
+    # Year filter
     years_available = sorted(gb["Year"].unique().tolist())
-    if not years_available:
-        st.info("No valid data after parsing.")
-        st.stop()
-
     yr_min, yr_max = int(min(years_available)), int(max(years_available))
     yr_range = st.slider(
         "Select year range",
@@ -586,15 +589,9 @@ with tab_bonds:
 
     gb_f = gb[(gb["Year"] >= yr_range[0]) & (gb["Year"] <= yr_range[1])].copy()
 
-    # =========================================================
-    # DEDUPLICATE by (Issuer + Coupon + Year)
-    # =========================================================
+    # Deduplicate by (Issuer + Coupon + Year)
     gb_f["__issuer_key"] = (
-        gb_f["Issuer"]
-        .astype(str)
-        .str.strip()
-        .str.replace(r"\s+", " ", regex=True)
-        .str.casefold()
+        gb_f["Issuer"].astype(str).str.strip().str.replace(r"\s+", " ", regex=True).str.lower()
     )
     gb_f["__coupon_num"] = (
         gb_f["Coupon (%)"]
@@ -602,17 +599,15 @@ with tab_bonds:
         .str.replace("%", "", regex=False)
         .str.replace(r"[^\d.\-]", "", regex=True)
     )
-    gb_f["__coupon_num"] = pd.to_numeric(gb_f["__coupon_num"], errors="coerce")
-    gb_f["__coupon_key"] = gb_f["__coupon_num"].fillna(-999999.0)
+    gb_f["__coupon_num"] = pd.to_numeric(gb_f["__coupon_num"], errors="coerce").fillna(-999999.0)
 
     gb_f = gb_f.sort_values(
-        ["Year", "__issuer_key", "__coupon_key", "Amount Raised"],
+        ["Year", "__issuer_key", "__coupon_num", "Amount Raised"],
         ascending=[True, True, True, False],
     )
+    gb_dedup = gb_f.drop_duplicates(subset=["Year", "__issuer_key", "__coupon_num"], keep="first")
 
-    gb_dedup = gb_f.drop_duplicates(subset=["Year", "__issuer_key", "__coupon_key"], keep="first")
-
-    # Aggregate by Year after deduplication
+    # Aggregate by year
     yearly = (
         gb_dedup.groupby("Year", dropna=True)["Amount Raised"]
         .sum()
@@ -621,15 +616,11 @@ with tab_bonds:
         .sort_values("Year")
     )
 
-    # KPI: Total issuance (appended with INR Crores)
+    # KPI: total issuance with INR Crores
     total_amt = float(yearly["Total Amount"].sum()) if len(yearly) else 0.0
     st.metric("Total Issuance (selected years)", f"{total_amt:,.0f} INR Crores")
 
-    # ---------------------------------------------------------
-    # BAR CHART WITH GREEN GRADIENT LEGEND
-    # ---------------------------------------------------------
-    import altair as alt
-
+    # Gradient Bar Chart
     base = alt.Chart(yearly).encode(
         x=alt.X("Year:O", title="Year"),
         y=alt.Y("Total Amount:Q", title="Total Amount Issued (INR Crores)"),
@@ -639,7 +630,6 @@ with tab_bonds:
         ],
     )
 
-    # Gradient green color scale
     bars = base.mark_bar().encode(
         color=alt.Color(
             "Total Amount:Q",
@@ -658,6 +648,57 @@ with tab_bonds:
     st.altair_chart(
         (bars + labels).properties(height=400).configure_view(strokeWidth=0),
         use_container_width=True,
+    )
+
+    # ---------------------------------------------------------
+    # COMMON COMPANIES TABLE (ESG + GREEN BONDS)
+    #   - Use the LATEST ESG score per company (by Last Updated On)
+    # ---------------------------------------------------------
+    # Normalize names for join
+    
+    gb_dedup["Issuer_clean"] = (
+        gb_dedup["Issuer"].astype(str).str.strip().str.replace(r"\s+", " ", regex=True).str.lower()
+    )
+    esg["Company_clean"] = (
+        esg["Company Name"].astype(str).str.strip().str.replace(r"\s+", " ", regex=True).str.lower()
+    )
+
+    # Parse "Last Updated On" and pick the latest row per company
+    # If dates fail to parse for all rows, fall back to first occurrence per company
+    esg["_updated_dt"] = pd.to_datetime(
+        esg["Last Updated On"], errors="coerce", dayfirst=True, infer_datetime_format=True
+    )
+    if esg["_updated_dt"].notna().any():
+        esg_sorted = esg.sort_values(["Company_clean", "_updated_dt"])
+        latest_idx = esg_sorted.groupby("Company_clean")["_updated_dt"].idxmax()
+        esg_latest = esg_sorted.loc[latest_idx].copy()
+    else:
+        # Fallback: take first record per company (no usable dates)
+        esg_latest = esg.drop_duplicates(subset=["Company_clean"], keep="first").copy()
+
+    # Merge latest ESG scores with deduped green bonds
+    merged = pd.merge(
+        esg_latest[["Company Name", "ESG Score", "Company_clean"]],
+        gb_dedup[["Issuer", "Issuer_clean", "Amount Raised"]],
+        left_on="Company_clean",
+        right_on="Issuer_clean",
+        how="inner",
+    )
+
+    # Aggregate total green bond amount per company
+    summary = (
+        merged.groupby(["Company Name", "ESG Score"], as_index=False)["Amount Raised"]
+        .sum()
+        .rename(columns={"Amount Raised": "Total Green Bond Amount (INR Cr)"})
+        .sort_values("Total Green Bond Amount (INR Cr)", ascending=False)
+    )
+
+    st.markdown("##### Indian Companies which have issued Green Bonds")
+
+    st.dataframe(
+        summary[["Company Name", "ESG Score", "Total Green Bond Amount (INR Cr)"]],
+        use_container_width=True,
+        hide_index=True,
     )
 
 
