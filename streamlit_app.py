@@ -134,7 +134,7 @@ with tab_overview:
 
     # ---------------- ESG Summary KPIs ----------------
 
-    st.markdown("##### ESG Data Summary")
+    st.markdown("## ESG Data Summary")
 
     n_total = len(df)
     n_companies = len(df_f)
@@ -461,7 +461,7 @@ with tab_sector:
     
     # ---------------- ESG Summary KPIs ----------------
 
-    st.markdown("##### ESG Data Summary")
+    st.markdown("## ESG Data Summary")
 
     n_total = len(df)
     n_companies = len(df_f)
@@ -684,6 +684,16 @@ with tab_bonds:
         st.metric("Unique Issuers", f"{n_unique_issuers:,}")
     with c4:
         st.metric("Average Coupon", f"{avg_coupon:.2f}%" if not math.isnan(avg_coupon) else "—")
+
+    # ---------------------------------------------------------
+    # Subheading line like ESG summary (Year Range)
+    # ---------------------------------------------------------
+    st.markdown(
+        f"<div style='text-align:left; font-size:0.9rem; color:gray;'>"
+        f"<b>Years Selected:</b> {yr_range[0]} – {yr_range[1]}"
+        f"</div>",
+        unsafe_allow_html=True
+    )
 
     st.divider()
 
