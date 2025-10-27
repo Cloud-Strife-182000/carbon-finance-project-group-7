@@ -651,11 +651,10 @@ with tab_bonds:
     )
 
     # ---------------------------------------------------------
-    # COMMON COMPANIES TABLE (ESG + GREEN BONDS)
-    #   - Use the LATEST ESG score per company (by Last Updated On)
+    # COMMON COMPANIES CHART (ESG + GREEN BONDS)
+    #   - Use the latest ESG score per company
+    #   - Display as a horizontal bar chart
     # ---------------------------------------------------------
-    # Normalize names for join
-    
     gb_dedup["Issuer_clean"] = (
         gb_dedup["Issuer"].astype(str).str.strip().str.replace(r"\s+", " ", regex=True).str.lower()
     )
@@ -663,18 +662,13 @@ with tab_bonds:
         esg["Company Name"].astype(str).str.strip().str.replace(r"\s+", " ", regex=True).str.lower()
     )
 
-    # Parse "Last Updated On" and pick the latest row per company
-    # If dates fail to parse for all rows, fall back to first occurrence per company
+    # Parse "Last Updated On" and pick the latest ESG score per company
     esg["_updated_dt"] = pd.to_datetime(
         esg["Last Updated On"], errors="coerce", dayfirst=True, infer_datetime_format=True
     )
-    if esg["_updated_dt"].notna().any():
-        esg_sorted = esg.sort_values(["Company_clean", "_updated_dt"])
-        latest_idx = esg_sorted.groupby("Company_clean")["_updated_dt"].idxmax()
-        esg_latest = esg_sorted.loc[latest_idx].copy()
-    else:
-        # Fallback: take first record per company (no usable dates)
-        esg_latest = esg.drop_duplicates(subset=["Company_clean"], keep="first").copy()
+    esg_sorted = esg.sort_values(["Company_clean", "_updated_dt"])
+    latest_idx = esg_sorted.groupby("Company_clean")["_updated_dt"].idxmax()
+    esg_latest = esg_sorted.loc[latest_idx].copy()
 
     # Merge latest ESG scores with deduped green bonds
     merged = pd.merge(
@@ -690,16 +684,40 @@ with tab_bonds:
         merged.groupby(["Company Name", "ESG Score"], as_index=False)["Amount Raised"]
         .sum()
         .rename(columns={"Amount Raised": "Total Green Bond Amount (INR Cr)"})
-        .sort_values("Total Green Bond Amount (INR Cr)", ascending=False)
+        .sort_values("Total Green Bond Amount (INR Cr)", ascending=True)
     )
 
     st.markdown("##### Indian Companies which have issued Green Bonds")
 
-    st.dataframe(
-        summary[["Company Name", "ESG Score", "Total Green Bond Amount (INR Cr)"]],
-        use_container_width=True,
-        hide_index=True,
+    import altair as alt
+
+    # Horizontal bar chart with ESG gradient color
+    chart = (
+        alt.Chart(summary)
+        .mark_bar()
+        .encode(
+            y=alt.Y("Company Name:N", sort="-x", title="Company"),
+            x=alt.X("Total Green Bond Amount (INR Cr):Q", title="Total Green Bond Amount (INR Crores)"),
+            color=alt.Color(
+                "ESG Score:Q",
+                title="ESG Score",
+                scale=alt.Scale(
+                    domain=[summary["ESG Score"].min(), summary["ESG Score"].max()],
+                    range=["#b2e0ac", "#40a65a", "#218a44", "#036429"]
+                ),
+            ),
+            tooltip=[
+                alt.Tooltip("Company Name:N", title="Company"),
+                alt.Tooltip("ESG Score:Q", title="ESG Score"),
+                alt.Tooltip("Total Green Bond Amount (INR Cr):Q", title="Bond Amount (INR Cr)", format=","),
+            ],
+        )
+        .properties(height=450)
+        .configure_view(strokeWidth=0)
     )
+
+    st.altair_chart(chart, use_container_width=True)
+
 
 
 # ---------------------------------------------------------
