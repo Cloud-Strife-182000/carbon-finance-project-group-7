@@ -16,7 +16,7 @@ from PIL import Image, ImageOps, ImageDraw
 # ---------------------------------------------------------
 # Page setup
 st.set_page_config(
-    page_title="ESG Disclosures and Carbon Finance Flows in Indian Capital Markets",
+    page_title="ESG Compass",
     layout="wide"
 )
 
