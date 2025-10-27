@@ -2,7 +2,7 @@ Here’s a complete **GitHub README.md** draft for your Streamlit-based carbon f
 
 ---
 
-# 🌱 ESG Disclosures and Carbon Finance Flows in Indian Capital Markets
+# 🌱 ESG Compass | ESG Disclosures and Carbon Finance Flows in Indian Capital Markets
 
 **Carbon Finance Term Project | Group-7 (CaF-B)**
 Built with **Streamlit + Altair**, this interactive dashboard explores ESG (Environmental, Social, and Governance) disclosures and carbon finance flows across Indian capital markets.
@@ -75,12 +75,12 @@ Data was sourced from [**India360 ESG Risk Platform**](https://india360.esgrisk.
 
 ## 👥 Project Team — Group-7 (CaF-B)
 
-| Member                 | Photo             |
-| ---------------------- | ----------------- |
-| Akshat Negi            | p24akshatnegi.JPG |
-| G R Srikanth           | p24srikanth.JPG   |
-| Siddharth Kumar Pandey | p24siddharth.JPG  |
-| Vineet Ranjan Maitrey  | p24vineet.jpg     |
+| Member                 |
+| ---------------------- |
+| Akshat Negi            |
+| G R Srikanth           |
+| Siddharth Kumar Pandey |
+| Vineet Ranjan Maitrey  |
 
 ---
 
