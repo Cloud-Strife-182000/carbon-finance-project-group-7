@@ -577,26 +577,31 @@ with tab_sector:
 # ---------------------------------------------------------
 with tab_bonds:
     
-
     # File paths
     gb_path = BASE_DIR / "data" / "green_bonds_data.csv"
     esg_path = BASE_DIR / "data" / "esg_risk_data.csv"
+    debt_path = BASE_DIR / "data" / "green_bonds_companies_debt_data.csv"
 
     # Load datasets
     gb = pd.read_csv(gb_path)
     esg = pd.read_csv(esg_path)
+    debt = pd.read_csv(debt_path)
 
     required_cols_gb = {
         "Sr. No.", "Issuer", "Issuance Date", "Date of Maturity",
         "Amount Raised", "Coupon (%)", "Tenure", "ISIN"
     }
     required_cols_esg = {"Company Name", "ESG Score"}
+    required_cols_debt = {"Company", "Total Debt"}
 
     if not required_cols_gb.issubset(gb.columns):
         st.error("The Green Bonds CSV is missing required columns.")
         st.stop()
     if not required_cols_esg.issubset(esg.columns):
         st.error("The ESG data CSV is missing required columns.")
+        st.stop()
+    if not required_cols_debt.issubset(debt.columns):
+        st.error("The Debt data CSV is missing required columns.")
         st.stop()
 
     # Parse and clean
@@ -802,6 +807,79 @@ with tab_bonds:
 
     st.altair_chart(chart, use_container_width=True)
 
+        # ---------------------------------------------------------
+    # GREEN BONDS VS TOTAL DEBT FINANCING COMPARISON
+    # ---------------------------------------------------------
+    st.markdown("##### Green Bonds vs Total Debt Financing")
+
+    # Clean + normalize for join
+    debt_clean = debt.copy()
+    debt_clean["Company_clean"] = (
+        debt_clean["Company"].astype(str).str.strip().str.replace(r"\s+", " ", regex=True).str.lower()
+    )
+    debt_clean["Total Debt"] = pd.to_numeric(
+        debt_clean["Total Debt"].astype(str).str.replace(r"[^\d.\-]", "", regex=True),
+        errors="coerce"
+    )
+
+    # Aggregate green bond issuance per issuer from *filtered + deduped* data
+    gb_agg = (
+        gb_dedup
+        .assign(Issuer_clean=lambda d: d["Issuer"].astype(str).str.strip().str.replace(r"\s+", " ", regex=True).str.lower())
+        .groupby("Issuer_clean", as_index=False)["Amount Raised"]
+        .sum()
+        .rename(columns={"Amount Raised": "Green Bond Amount (INR Cr)"})
+    )
+
+    # Merge
+    comparison = debt_clean.merge(
+        gb_agg, left_on="Company_clean", right_on="Issuer_clean", how="inner"
+    )
+
+    # % share of green bonds in total debt
+    comparison["% Green Bond Share"] = (
+        comparison["Green Bond Amount (INR Cr)"] / comparison["Total Debt"] * 100
+    ).round(2)
+
+    # Long form for grouped bars
+    comp_melt = comparison.melt(
+        id_vars=["Company", "% Green Bond Share"],
+        value_vars=["Total Debt", "Green Bond Amount (INR Cr)"],
+        var_name="Financing Type",
+        value_name="Amount (INR Cr)"
+    )
+
+    # Horizontal grouped bars: grey = total debt, green = green bonds
+    chart_debt = (
+        alt.Chart(comp_melt)
+        .mark_bar()
+        .encode(
+            y=alt.Y("Company:N", sort="-x", title="Company"),
+            x=alt.X("Amount (INR Cr):Q", title="Amount (INR Crores)"),
+            color=alt.Color(
+                "Financing Type:N",
+                title="Type",
+                scale=alt.Scale(
+                    domain=["Total Debt", "Green Bond Amount (INR Cr)"],
+                    range=["#d9d9d9", "#218a44"]
+                ),
+                legend=alt.Legend(
+                    title=None,
+                    labelExpr="datum.label == 'Total Debt' ? 'Total Debt (2025)' : datum.label"
+                )
+            ),
+            tooltip=[
+                alt.Tooltip("Company:N", title="Company"),
+                alt.Tooltip("Financing Type:N", title="Type"),
+                alt.Tooltip("Amount (INR Cr):Q", title="Amount (INR Cr)", format=","),
+                alt.Tooltip("% Green Bond Share:Q", title="% of Debt from Green Bonds", format=".2f"),
+            ],
+        )
+        .properties(height=max(300, 28 * comparison["Company"].nunique()))
+        .configure_view(strokeWidth=0)
+    )
+
+    st.altair_chart(chart_debt, use_container_width=True)
 
 
 # ---------------------------------------------------------
