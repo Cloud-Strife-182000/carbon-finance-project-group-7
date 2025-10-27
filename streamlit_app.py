@@ -30,7 +30,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-st.divider()
 
 BASE_DIR = Path(__file__).parent
 DATA_PATH = BASE_DIR / "data" / "esg_risk_data.csv"
@@ -127,50 +126,52 @@ if len(df_f) == 0:
     st.stop()
 
 # ---------------------------------------------------------
-# KPIs
-# ---------------------------------------------------------
-
-st.markdown("## ESG Data Summary")
-
-n_total = len(df)
-n_companies = len(df_f)
-avg_score = float(df_f[score_col].mean())
-med_score = float(df_f[score_col].median())
-
-k1, k2, k3 = st.columns(3)
-with k1:
-    st.metric("Companies Analyzed", f"{n_companies:,} / {n_total:,}")
-with k2:
-    st.metric("Average ESG Score", f"{avg_score:.1f}")
-with k3:
-    st.metric("Median ESG Score", f"{med_score:.1f}")
-
-# Year + sectors summary
-if chosen_sectors:
-    n_sectors_selected = len(chosen_sectors)
-    total_sectors = len(df["Sector Classification"].astype("string").fillna("Unknown").unique())
-else:
-    n_sectors_selected = total_sectors = len(df["Sector Classification"].astype("string").fillna("Unknown").unique())
-
-st.markdown(
-    f"""
-    <div style="margin-top:-10px; margin-bottom:20px; font-size:0.95rem; color:gray;">
-        <b>Year:</b> {year_choice} &nbsp;&nbsp;|&nbsp;&nbsp;
-        <b>Sectors Chosen:</b> {n_sectors_selected} / {total_sectors}
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-# ---------------------------------------------------------
 # TABS
 # ---------------------------------------------------------
-tab_overview, tab_sector, tab_bonds, tab_team = st.tabs(["ESG Overview", "Sector Analysis", "Green Bonds", "Team"])
+tab_overview, tab_sector, tab_bonds, tab_team = st.tabs(["ESG Overview", "ESG Sector Analysis", "Green Bonds", "Team"])
 
 with tab_overview:
-    st.markdown("## ESG Performance Dashboard")
+
+    # ---------------- ESG Summary KPIs ----------------
+
+    st.markdown("##### ESG Data Summary")
+
+    n_total = len(df)
+    n_companies = len(df_f)
+    avg_score = float(df_f[score_col].mean())
+    med_score = float(df_f[score_col].median())
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Companies Analyzed", f"{n_companies:,} / {n_total:,}")
+    with c2:
+        st.metric("Average ESG Score", f"{avg_score:.1f}")
+    with c3:
+        st.metric("Median ESG Score", f"{med_score:.1f}")
+
+    # Year + sectors summary
+    if chosen_sectors:
+        n_sectors_selected = len(chosen_sectors)
+        total_sectors = len(df["Sector Classification"].astype("string").fillna("Unknown").unique())
+    else:
+        n_sectors_selected = total_sectors = len(df["Sector Classification"].astype("string").fillna("Unknown").unique())
+
+    st.markdown(
+        f"""
+        <div style="margin-top:-10px; margin-bottom:20px; font-size:0.95rem; color:gray;">
+            <b>Year:</b> {year_choice} &nbsp;&nbsp;|&nbsp;&nbsp;
+            <b>Sectors Chosen:</b> {n_sectors_selected} / {total_sectors}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.divider()
 
     # ---------------- CHARTS (Histogram + Pie) ----------------
+
+    st.markdown("## ESG Performance Dashboard")
+
     left, right = st.columns(2)
 
     # Histogram (ESG Score) with green gradient
@@ -452,12 +453,51 @@ with tab_overview:
 
 
 # ---------------------------------------------------------
-# SECTOR ANALYSIS TAB
+# ESG SECTOR ANALYSIS TAB
 # ---------------------------------------------------------
 
 
 with tab_sector:
-    st.markdown("## Sector-wise Analysis")
+    
+    # ---------------- ESG Summary KPIs ----------------
+
+    st.markdown("##### ESG Data Summary")
+
+    n_total = len(df)
+    n_companies = len(df_f)
+    avg_score = float(df_f[score_col].mean())
+    med_score = float(df_f[score_col].median())
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Companies Analyzed", f"{n_companies:,} / {n_total:,}")
+    with c2:
+        st.metric("Average ESG Score", f"{avg_score:.1f}")
+    with c3:
+        st.metric("Median ESG Score", f"{med_score:.1f}")
+
+    # Year + sectors summary
+    if chosen_sectors:
+        n_sectors_selected = len(chosen_sectors)
+        total_sectors = len(df["Sector Classification"].astype("string").fillna("Unknown").unique())
+    else:
+        n_sectors_selected = total_sectors = len(df["Sector Classification"].astype("string").fillna("Unknown").unique())
+
+    st.markdown(
+        f"""
+        <div style="margin-top:-10px; margin-bottom:20px; font-size:0.95rem; color:gray;">
+            <b>Year:</b> {year_choice} &nbsp;&nbsp;|&nbsp;&nbsp;
+            <b>Sectors Chosen:</b> {n_sectors_selected} / {total_sectors}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.divider()
+
+    # ---------------- Sector-wise heatmap ----------------
+
+    st.markdown("## ESG Sector-wise Analysis")
 
     SECTOR_COL = "Sector Classification"
     if SECTOR_COL not in df_f.columns:
@@ -536,12 +576,7 @@ with tab_sector:
 # GREEN BONDS TAB
 # ---------------------------------------------------------
 with tab_bonds:
-    st.markdown("## Green Bonds Analysis")
-
-    st.markdown("##### Green Bonds Issuance By Year")
-
-    import altair as alt
-    import pandas as pd
+    
 
     # File paths
     gb_path = BASE_DIR / "data" / "green_bonds_data.csv"
@@ -576,17 +611,24 @@ with tab_bonds:
     gb = gb.dropna(subset=["Year", "Amount Raised"])
     gb["Year"] = gb["Year"].astype(int)
 
-    # Year filter
+    # --------------------------------------------
+    # GREEN BONDS FILTERS — SIDEBAR SECTION
+    # --------------------------------------------
+    st.sidebar.divider()
+    st.sidebar.header("Green Bonds Filters")
+
     years_available = sorted(gb["Year"].unique().tolist())
     yr_min, yr_max = int(min(years_available)), int(max(years_available))
-    yr_range = st.slider(
-        "Select year range",
+    yr_range = st.sidebar.slider(
+        "Select Year Range",
         min_value=yr_min,
         max_value=yr_max,
         value=(yr_min, yr_max),
         step=1,
+        help="Filter green bond issuance years"
     )
 
+    # Apply the sidebar year filter
     gb_f = gb[(gb["Year"] >= yr_range[0]) & (gb["Year"] <= yr_range[1])].copy()
 
     # Deduplicate by (Issuer + Coupon + Year)
@@ -616,9 +658,41 @@ with tab_bonds:
         .sort_values("Year")
     )
 
-    # KPI: total issuance with INR Crores
-    total_amt = float(yearly["Total Amount"].sum()) if len(yearly) else 0.0
-    st.metric("Total Issuance (selected years)", f"{total_amt:,.0f} INR Crores")
+    # ---------------------------------------------------------
+    # GREEN BONDS DATA SUMMARY (filtered + deduped)
+    # ---------------------------------------------------------
+    st.markdown("## Green Bonds Data Summary")
+
+    # Totals from aggregated 'yearly'
+    total_amt = float(yearly["Total Amount"].sum()) if not yearly.empty else 0.0
+
+    # Issuances count and unique issuers from deduped rows
+    n_issuances = int(len(gb_dedup))  # deduped by (Issuer + Coupon + Year)
+    n_unique_issuers = int(gb_dedup["__issuer_key"].nunique()) if len(gb_dedup) else 0
+
+    # Average coupon (%) ignoring placeholder -999999 and NaNs
+    valid_coupon = gb_dedup["__coupon_num"]
+    valid_coupon = valid_coupon.where(valid_coupon != -999999.0)
+    avg_coupon = float(valid_coupon.mean(skipna=True)) if valid_coupon.notna().any() else float("nan")
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric("Total Issuance (selected years)", f"{total_amt:,.0f} INR Cr.")
+    with c2:
+        st.metric("Green Bonds Issued", f"{n_issuances:,}")
+    with c3:
+        st.metric("Unique Issuers", f"{n_unique_issuers:,}")
+    with c4:
+        st.metric("Average Coupon", f"{avg_coupon:.2f}%" if not math.isnan(avg_coupon) else "—")
+
+    st.divider()
+
+    # ---------------------------------------------------------
+    # Place the analysis headings AFTER the summary
+    # ---------------------------------------------------------
+
+    st.markdown("## Green Bonds Analysis")
+    st.markdown("##### Green Bonds Issuance By Year")
 
     # Gradient Bar Chart
     base = alt.Chart(yearly).encode(
