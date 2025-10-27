@@ -776,7 +776,7 @@ with tab_bonds:
         .sort_values("Total Green Bond Amount (INR Cr)", ascending=True)
     )
 
-    st.markdown("##### Indian Companies which have issued Green Bonds")
+    st.markdown("##### Indian Companies which have issued Green Bonds (with ESG Ratings)")
 
     import altair as alt
 
