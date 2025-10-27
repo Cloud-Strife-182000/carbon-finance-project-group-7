@@ -21,7 +21,7 @@ st.set_page_config(
 )
 
 # Title
-st.title("ESG Disclosures and Carbon Finance Flows in Indian Capital Markets")
+st.title("ESG Compass")
 st.markdown(
     """
     <h3 style='text-align: left; color: #333; margin-top: -5px;'>
