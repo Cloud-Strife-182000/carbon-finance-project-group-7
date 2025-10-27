@@ -881,6 +881,67 @@ with tab_bonds:
 
     st.altair_chart(chart_debt, use_container_width=True)
 
+        # ---------------------------------------------------------
+    # COMPANY-LEVEL VIEW: GREEN BOND SHARE BY ESG CATEGORY
+    # ---------------------------------------------------------
+    st.markdown("##### Company-wise Green Bond Share by ESG Strength")
+
+    # Merge ESG scores into comparison data
+    esg_merge = esg_latest[["Company Name", "ESG Score", "Company_clean"]].copy()
+    comp_esg_detail = pd.merge(
+        comparison,
+        esg_merge,
+        left_on="Issuer_clean" if "Issuer_clean" in comparison.columns else "Company_clean",
+        right_on="Company_clean",
+        how="left"
+    )
+
+    # ESG Category Classification
+    def classify_esg(score):
+        if pd.isna(score):
+            return "Unknown"
+        elif score >= 60:
+            return "Strong ESG Firms"
+        elif score >= 40:
+            return "Moderate ESG Firms"
+        else:
+            return "Weak ESG Firms"
+
+    comp_esg_detail["ESG Category"] = comp_esg_detail["ESG Score"].apply(classify_esg)
+
+    # Sort companies by share
+    comp_esg_detail = comp_esg_detail.sort_values("% Green Bond Share", ascending=False)
+
+    # Horizontal bars by company, colored by ESG category
+    chart_company_esg = (
+        alt.Chart(comp_esg_detail)
+        .mark_bar()
+        .encode(
+            y=alt.Y("Company:N", sort="-x", title="Company"),
+            x=alt.X("% Green Bond Share:Q", title="% of Total Debt Financed via Green Bonds"),
+            color=alt.Color(
+                "ESG Category:N",
+                title="ESG Category",
+                scale=alt.Scale(
+                    domain=["Strong ESG Firms", "Moderate ESG Firms", "Weak ESG Firms", "Unknown"],
+                    range=["#036429", "#40a65a", "#b2e0ac", "#cccccc"]
+                ),
+            ),
+            tooltip=[
+                alt.Tooltip("Company:N", title="Company"),
+                alt.Tooltip("ESG Score:Q", title="ESG Score"),
+                alt.Tooltip("ESG Category:N", title="ESG Category"),
+                alt.Tooltip("Total Debt:Q", title="Total Debt (INR Cr)", format=","),
+                alt.Tooltip("Green Bond Amount (INR Cr):Q", title="Green Bonds (INR Cr)", format=","),
+                alt.Tooltip("% Green Bond Share:Q", title="% Share", format=".2f"),
+            ],
+        )
+        .properties(height=max(400, 28 * comp_esg_detail["Company"].nunique()))
+        .configure_view(strokeWidth=0)
+    )
+
+    st.altair_chart(chart_company_esg, use_container_width=True)
+
 
 # ---------------------------------------------------------
 # TEAM TAB
