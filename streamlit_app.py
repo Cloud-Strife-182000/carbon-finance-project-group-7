@@ -1026,15 +1026,25 @@ with tab_team:
 # Data Source Footer
 # ---------------------------------------------------------
 
+import streamlit as st
+
 st.markdown("<hr>", unsafe_allow_html=True)
+
 st.markdown(
     """
     <div style='text-align: center; font-size: 0.9rem; color: gray; margin-top: 10px;'>
         <b>Data Source:</b> 
         <a href='https://india360.esgrisk.ai/Accounts/Ratinglist' target='_blank' style='text-decoration: none; color: #2E8B57;'>
             india360.esgrisk.ai
+        </a> |
+        <a href='https://www.sebi.gov.in/statistics/greenbonds.html' target='_blank' style='text-decoration: none; color: #2E8B57;'>
+            SEBI Green Bonds Statistics
+        </a> |
+        <a href='https://www.indiainx.com/static/gssustainablebonds.aspx' target='_blank' style='text-decoration: none; color: #2E8B57;'>
+            India INX Green & Sustainable Bonds
         </a>
     </div>
     """,
     unsafe_allow_html=True
 )
+
