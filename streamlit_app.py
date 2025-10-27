@@ -165,7 +165,7 @@ st.markdown(
 # ---------------------------------------------------------
 # TABS
 # ---------------------------------------------------------
-tab_overview, tab_sector, tab_team = st.tabs(["ESG Overview", "Sector Analysis", "Team"])
+tab_overview, tab_sector, tab_bonds, tab_team = st.tabs(["ESG Overview", "Sector Analysis", "Green Bonds", "Team"])
 
 with tab_overview:
     st.markdown("## ESG Performance Dashboard")
@@ -530,6 +530,136 @@ with tab_sector:
             )
 
             st.altair_chart(comp_heatmap, use_container_width=True)
+
+
+# ---------------------------------------------------------
+# GREEN BONDS TAB
+# ---------------------------------------------------------
+with tab_bonds:
+    
+    st.markdown("## Green Bonds Analysis")
+
+    st.markdown("##### Green Bonds Issuance By Year")
+
+    gb_path = BASE_DIR / "data" / "green_bonds_data.csv"
+
+    # Load dataset
+    gb = pd.read_csv(gb_path)
+
+    required_cols = {
+        "Sr. No.", "Issuer", "Issuance Date", "Date of Maturity",
+        "Amount Raised", "Coupon (%)", "Tenure", "ISIN"
+    }
+    missing = required_cols.difference(gb.columns)
+    if missing:
+        st.error(f"Missing columns in green_bonds_data.csv: {', '.join(sorted(missing))}")
+        st.stop()
+
+    # Parse dates and derive Year
+    gb["Issuance Date"] = pd.to_datetime(
+        gb["Issuance Date"], errors="coerce", dayfirst=True, infer_datetime_format=True
+    )
+    gb["Year"] = gb["Issuance Date"].dt.year
+
+    # Clean and convert Amount Raised
+    amt = gb["Amount Raised"].astype(str).str.replace(r"[^\d.\-]", "", regex=True)
+    gb["Amount Raised"] = pd.to_numeric(amt, errors="coerce")
+
+    # Drop invalid rows
+    gb = gb.dropna(subset=["Year", "Amount Raised"])
+    gb["Year"] = gb["Year"].astype(int)
+
+    # Filter by year range
+    years_available = sorted(gb["Year"].unique().tolist())
+    if not years_available:
+        st.info("No valid data after parsing.")
+        st.stop()
+
+    yr_min, yr_max = int(min(years_available)), int(max(years_available))
+    yr_range = st.slider(
+        "Select year range",
+        min_value=yr_min,
+        max_value=yr_max,
+        value=(yr_min, yr_max),
+        step=1,
+    )
+
+    gb_f = gb[(gb["Year"] >= yr_range[0]) & (gb["Year"] <= yr_range[1])].copy()
+
+    # =========================================================
+    # DEDUPLICATE by (Issuer + Coupon + Year)
+    # =========================================================
+    gb_f["__issuer_key"] = (
+        gb_f["Issuer"]
+        .astype(str)
+        .str.strip()
+        .str.replace(r"\s+", " ", regex=True)
+        .str.casefold()
+    )
+    gb_f["__coupon_num"] = (
+        gb_f["Coupon (%)"]
+        .astype(str)
+        .str.replace("%", "", regex=False)
+        .str.replace(r"[^\d.\-]", "", regex=True)
+    )
+    gb_f["__coupon_num"] = pd.to_numeric(gb_f["__coupon_num"], errors="coerce")
+    gb_f["__coupon_key"] = gb_f["__coupon_num"].fillna(-999999.0)
+
+    gb_f = gb_f.sort_values(
+        ["Year", "__issuer_key", "__coupon_key", "Amount Raised"],
+        ascending=[True, True, True, False],
+    )
+
+    gb_dedup = gb_f.drop_duplicates(subset=["Year", "__issuer_key", "__coupon_key"], keep="first")
+
+    # Aggregate by Year after deduplication
+    yearly = (
+        gb_dedup.groupby("Year", dropna=True)["Amount Raised"]
+        .sum()
+        .reset_index()
+        .rename(columns={"Amount Raised": "Total Amount"})
+        .sort_values("Year")
+    )
+
+    # KPI: Total issuance (appended with INR Crores)
+    total_amt = float(yearly["Total Amount"].sum()) if len(yearly) else 0.0
+    st.metric("Total Issuance (selected years)", f"{total_amt:,.0f} INR Crores")
+
+    # ---------------------------------------------------------
+    # BAR CHART WITH GREEN GRADIENT LEGEND
+    # ---------------------------------------------------------
+    import altair as alt
+
+    base = alt.Chart(yearly).encode(
+        x=alt.X("Year:O", title="Year"),
+        y=alt.Y("Total Amount:Q", title="Total Amount Issued (INR Crores)"),
+        tooltip=[
+            alt.Tooltip("Year:O", title="Year"),
+            alt.Tooltip("Total Amount:Q", title="Total (INR Crores)", format=","),
+        ],
+    )
+
+    # Gradient green color scale
+    bars = base.mark_bar().encode(
+        color=alt.Color(
+            "Total Amount:Q",
+            title="Issuance Amount (INR Crores)",
+            scale=alt.Scale(
+                domain=[yearly["Total Amount"].min(), yearly["Total Amount"].max()],
+                range=["#b2e0ac", "#40a65a", "#218a44", "#036429"],
+            ),
+        )
+    )
+
+    labels = base.mark_text(
+        align="center", baseline="bottom", dy=-4, fontWeight="bold", color="#222"
+    ).encode(text=alt.Text("Total Amount:Q", format=",.0f"))
+
+    st.altair_chart(
+        (bars + labels).properties(height=400).configure_view(strokeWidth=0),
+        use_container_width=True,
+    )
+
 
 # ---------------------------------------------------------
 # TEAM TAB
