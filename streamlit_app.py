@@ -1033,7 +1033,7 @@ st.markdown("<hr>", unsafe_allow_html=True)
 st.markdown(
     """
     <div style='text-align: center; font-size: 0.9rem; color: gray; margin-top: 10px;'>
-        <b>Data Source:</b> 
+        <b>Data Sources:</b> 
         <a href='https://india360.esgrisk.ai/Accounts/Ratinglist' target='_blank' style='text-decoration: none; color: #2E8B57;'>
             india360.esgrisk.ai
         </a> |
